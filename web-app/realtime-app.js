@@ -126,15 +126,10 @@ class RealtimeVoiceAssistant {
         this.mediaStream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 channelCount: 1,
-                echoCancellation: { ideal: true },
-                noiseSuppression: { ideal: true },
-                autoGainControl: { ideal: true },
-                sampleRate: { ideal: this.sampleRate },
-                // Additional constraints for better echo handling
-                googEchoCancellation: { exact: true },
-                googAutoGainControl: { exact: true },
-                googNoiseSuppression: { exact: true },
-                googHighpassFilter: { exact: true }
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: { ideal: this.sampleRate }
             }
         });
         
@@ -145,7 +140,7 @@ class RealtimeVoiceAssistant {
         
         // Create gain node for audio ducking and echo reduction
         this.gainNode = this.audioContext.createGain();
-        this.gainNode.gain.value = 0.7; // Reduce volume to minimize echo
+        this.gainNode.gain.value = 0.5; // Reduce volume significantly to prevent echo
         this.gainNode.connect(this.audioContext.destination);
         
         // Initialize interruption manager with audio context
@@ -166,6 +161,11 @@ class RealtimeVoiceAssistant {
         
         this.processor.onaudioprocess = (e) => {
             if (!this.isRecording) return;
+            
+            // Skip processing if assistant is speaking to prevent echo
+            if (this.interruptionManager && this.interruptionManager.isAssistantSpeaking && this.isPlaying) {
+                return;
+            }
             
             const inputData = e.inputBuffer.getChannelData(0);
             // Convert Float32 to PCM16 for Realtime API
@@ -270,6 +270,12 @@ class RealtimeVoiceAssistant {
                 const responseId = data.response_id || data.item_id;
                 if (this.interruptionManager && !this.interruptionManager.shouldPlayAudioChunk(responseId)) {
                     console.log(`Discarding audio from interrupted response: ${responseId}`);
+                    break;
+                }
+                
+                // Double-check user is not speaking
+                if (this.interruptionManager && this.interruptionManager.isUserSpeaking) {
+                    console.log('Discarding audio because user is speaking');
                     break;
                 }
                 
@@ -378,6 +384,14 @@ class RealtimeVoiceAssistant {
     }
     
     async playAudioQueue() {
+        // Check if interrupted before starting
+        if (this.interruptionManager && this.interruptionManager.isUserSpeaking) {
+            console.log('User is speaking, stopping audio queue');
+            this.audioQueue = [];
+            this.isPlaying = false;
+            return;
+        }
+        
         if (this.audioQueue.length === 0) {
             this.isPlaying = false;
             return;
@@ -560,5 +574,6 @@ class RealtimeVoiceAssistant {
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', () => {
-    window.voiceAssistant = new RealtimeVoiceAssistant();
+    window.app = new RealtimeVoiceAssistant();
+    window.voiceAssistant = window.app; // For compatibility
 });

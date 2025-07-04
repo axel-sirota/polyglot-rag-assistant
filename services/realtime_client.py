@@ -32,10 +32,11 @@ class RealtimeClient:
             "voice": "alloy",
             "turn_detection": {
                 "type": "server_vad",
-                "threshold": 0.5,  # Balanced sensitivity
-                "prefix_padding_ms": 300,  # Standard padding before speech
-                "silence_duration_ms": 700,  # Longer silence to avoid cutting off user
-                "create_response": True  # Automatically create response when VAD detects end
+                "threshold": 0.5,  # Default LiveKit threshold
+                "prefix_padding_ms": 300,  # LiveKit default
+                "silence_duration_ms": 200,  # LiveKit default for faster interruption
+                "create_response": True,  # Automatically create response when VAD detects end
+                "interrupt_response": True  # Enable interruption of ongoing responses
             },
             "input_audio_transcription": {
                 "model": "whisper-1",  # Enable real-time transcription

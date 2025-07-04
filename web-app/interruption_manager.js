@@ -54,40 +54,12 @@ class InterruptionManager {
         this.lastInterruptionTime = now;
         this.isUserSpeaking = true;
         
-        // Only interrupt if assistant is actually speaking
-        if (this.isAssistantSpeaking && this.isProcessing) {
-            console.log('User interruption detected, stopping assistant speech');
+        // Always interrupt if assistant is speaking or processing
+        if (this.isAssistantSpeaking || this.isProcessing) {
+            console.log('User interruption detected, stopping assistant immediately');
             
-            // Step 1: Send response.cancel to stop server-side generation
-            await this.sendCancelResponse();
-            
-            // Step 2: Clear all pending audio in the queue
-            this.clearAudioQueue();
-            
-            // Step 3: Stop currently playing audio
-            this.stopCurrentAudio();
-            
-            // Step 4: Truncate the conversation item at the exact interruption point
-            if (this.lastAudioMessageItemId) {
-                await this.truncateConversationItem();
-            }
-            
-            // Step 5: Clear the input audio buffer to remove any echo
-            await this.clearInputAudioBuffer();
-            
-            // Step 6: Reset processing state
-            this.isProcessing = false;
-            this.isAssistantSpeaking = false;
-            this.audioSampleCounter = 0;
-            this.audioSampleCounterPlayed = 0;
-            
-            // Step 7: Notify UI of interruption
-            this.notifyUI('interrupted');
-            
-            // Step 7: Mark response as interrupted
-            if (this.currentResponseId) {
-                this.interruptedResponses.add(this.currentResponseId);
-            }
+            // Execute interruption immediately without waiting
+            this.executeInterruption();
         }
         
         // Duck audio when user speaks
@@ -156,6 +128,26 @@ class InterruptionManager {
                 console.log('Stopped current audio playback');
             } catch (e) {
                 // Already stopped
+            }
+        }
+        
+        // Also stop app's current source
+        if (window.app && window.app.currentSource) {
+            try {
+                window.app.currentSource.stop();
+                window.app.currentSource = null;
+            } catch (e) {
+                // Already stopped
+            }
+        }
+        
+        // Clear app's audio queue
+        if (window.app) {
+            window.app.audioQueue = [];
+            window.app.isPlaying = false;
+            if (window.app.audioPlaybackTimer) {
+                clearTimeout(window.app.audioPlaybackTimer);
+                window.app.audioPlaybackTimer = null;
             }
         }
     }
@@ -227,17 +219,38 @@ class InterruptionManager {
         }
     }
     
+    // Execute interruption immediately
+    async executeInterruption() {
+        // Step 1: Stop all audio IMMEDIATELY
+        this.stopCurrentAudio();
+        this.clearAudioQueue();
+        
+        // Step 2: Mark response as interrupted BEFORE sending cancel
+        if (this.currentResponseId) {
+            this.interruptedResponses.add(this.currentResponseId);
+        }
+        
+        // Step 3: Send response.cancel to stop server-side generation
+        await this.sendCancelResponse();
+        
+        // Step 4: Clear the input audio buffer to remove any echo
+        await this.clearInputAudioBuffer();
+        
+        // Step 5: Reset processing state
+        this.isProcessing = false;
+        this.isAssistantSpeaking = false;
+        this.audioSampleCounter = 0;
+        this.audioSampleCounterPlayed = 0;
+        
+        // Step 6: Notify UI of interruption
+        this.notifyUI('interrupted');
+    }
+    
     // Handle interruption event from server
     handleInterruption(itemId) {
         console.log('Handling server interruption event', itemId);
-        // Clear audio queue
-        this.clearAudioQueue();
-        // Stop current audio
-        this.stopCurrentAudio();
-        // Reset state
-        this.isProcessing = false;
-        this.isAssistantSpeaking = false;
-        this.notifyUI('interrupted');
+        // Execute interruption immediately
+        this.executeInterruption();
     }
 }
 
