@@ -15,9 +15,6 @@ echo "🏷️  Tagging image..."
 docker tag ${IMAGE_NAME}:${TAG} ${DOCKER_USERNAME}/${IMAGE_NAME}:${TAG}
 docker tag ${IMAGE_NAME}:${TAG} ${DOCKER_USERNAME}/${IMAGE_NAME}:latest
 
-echo "🔐 Logging in to Docker Hub..."
-echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
-
 echo "📤 Pushing to Docker Hub..."
 docker push ${DOCKER_USERNAME}/${IMAGE_NAME}:${TAG}
 docker push ${DOCKER_USERNAME}/${IMAGE_NAME}:latest
