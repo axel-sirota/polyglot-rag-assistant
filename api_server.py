@@ -142,7 +142,25 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_json()
             message_type = data.get("type")
             
-            if message_type == "audio":
+            if message_type == "interrupt":
+                # Handle interruption request
+                voice_processor = manager.voice_processors.get(websocket)
+                if voice_processor and hasattr(voice_processor, 'realtime_client'):
+                    # Send interrupt to Realtime API
+                    if voice_processor.realtime_client and voice_processor.realtime_client.is_connected:
+                        try:
+                            await voice_processor.realtime_client._send_message({
+                                "type": "conversation.item.truncate",
+                                "item_id": "current",
+                                "content_index": 0,
+                                "audio_end_ms": 0
+                            })
+                            logger.info("Sent interrupt signal to Realtime API")
+                        except Exception as e:
+                            logger.error(f"Failed to send interrupt: {e}")
+                continue
+                
+            elif message_type == "audio":
                 # Process audio data
                 audio_base64 = data.get("audio")
                 language = data.get("language", "auto")
