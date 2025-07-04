@@ -1,6 +1,6 @@
 # Executive Summary - Polyglot RAG Assistant
 
-## Last Updated: July 4, 2025, 12:45 PM
+## Last Updated: July 4, 2025, 1:35 PM
 
 ## Session Summary
 
@@ -10,6 +10,7 @@
 3. **Redesigned UI layout** - Chat on right, controls on left for better visibility
 4. **Fixed audio playback** - Corrected field mapping between Realtime API and voice processor
 5. **Improved error handling** - Better WebSocket connection management and error recovery
+6. **Fixed critical async/await error** - Flight results now return properly (was causing "coroutine never awaited" error)
 
 ### Technical Implementation
 
@@ -32,6 +33,7 @@ User Browser → WebSocket → API Server → Voice Processor → OpenAI Realtim
 2. `services/voice_processor.py` - Fixed audio_delta field mapping
 3. `web-app/realtime.html` - New layout with chat on right, controls on left  
 4. `web-app/realtime-app.js` - Added audio context resume for browser compatibility
+5. `services/flight_search_service.py` - Fixed async/await error in _get_mock_flights call
 
 ### Current Status
 - ✅ Real-time voice interface working
@@ -49,15 +51,25 @@ User Browser → WebSocket → API Server → Voice Processor → OpenAI Realtim
 - Audio responses playing correctly after field mapping fix
 
 ### Known Issues
-1. **API Keys**: Both AviationStack and SerpAPI keys are invalid/expired
+1. **Voice Interruption**: Assistant doesn't stop speaking immediately when user interrupts
+   - OpenAI Realtime API limitation - stops only at chunk boundaries
+   - Need to implement client-side audio ducking for better experience
+2. **API Keys**: Both AviationStack and SerpAPI keys are invalid/expired
    - System falls back to mock flight data
-2. **Audio Worklet Warning**: Browser shows deprecation warning for ScriptProcessorNode
+   - User provided working keys but still getting 400/401 errors
+3. **Message Ordering**: Chat sometimes shows assistant messages before user messages
+   - Need to implement message queue for proper ordering
+4. **Audio Worklet Warning**: Browser shows deprecation warning for ScriptProcessorNode
    - Works fine but should migrate to AudioWorkletNode in future
 
 ### Next Steps
-1. **Mobile App**: React Native Expo app still pending (todo #5)
-2. **Production Deployment**: Need valid API keys for flight search
-3. **Audio Worklet**: Migrate from ScriptProcessorNode for better performance
+1. **Fix API Integration**: Debug why AviationStack returns 400 with valid key
+   - Try different endpoints or parameters
+   - Consider Browserless.io as alternative (key provided)
+2. **Improve Interruption**: Implement client-side audio ducking
+3. **Mobile App**: React Native Expo app still pending (todo #5)
+4. **Production Deployment**: Deploy to LiveKit Cloud for demo
+5. **Audio Worklet**: Migrate from ScriptProcessorNode for better performance
 
 ### How to Run
 ```bash

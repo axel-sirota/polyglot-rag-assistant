@@ -368,11 +368,10 @@ class RealtimeVoiceAssistant {
         // Find the chat container parent
         const chatContainer = this.messagesEl.closest('.chat-container');
         if (chatContainer) {
-            // Smooth scroll to bottom
-            chatContainer.scrollTo({
-                top: chatContainer.scrollHeight,
-                behavior: 'smooth'
-            });
+            // Force scroll to bottom with a small delay
+            setTimeout(() => {
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }, 100);
         }
     }
 }
