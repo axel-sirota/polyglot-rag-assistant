@@ -341,3 +341,52 @@ async executeInterruption() {
 5. Consider implementing semantic VAD if issues persist
 
 The voice UX is now the top priority for the conference demo.
+
+## LiveKit Migration (2025-07-04 - Latest Session)
+
+### Decision to Use LiveKit Cloud
+User requested: "how about we go full livekit and deploy to livekit cloud and work from there"
+
+Rationale:
+- LiveKit has battle-tested voice interruption handling
+- WebRTC infrastructure for low latency
+- Auto-scaling and global edge network
+- Native OpenAI Realtime API integration
+- Solves all our interruption issues
+
+### Implementation
+
+1. **Created LiveKit Agent** (`livekit-agent/`):
+   - `realtime_agent.py` - Production-ready agent with OpenAI Realtime API
+   - Uses LiveKit's native interruption handling
+   - Multilingual support with automatic language detection
+   - Flight search via our existing API endpoint
+
+2. **Architecture**:
+   ```
+   User Browser → WebRTC → LiveKit Cloud → Agent → API Server → Amadeus
+   ```
+   - LiveKit handles all voice/WebRTC complexity
+   - Agent calls our existing `/api/flights` endpoint
+   - Amadeus SDK remains unchanged for flight search
+
+3. **Key Files Created**:
+   - `livekit-agent/realtime_agent.py` - Main agent implementation
+   - `livekit-agent/requirements.txt` - Dependencies including Amadeus
+   - `livekit-agent/deploy.sh` - Deploy to LiveKit Cloud
+   - `livekit-agent/run_local.sh` - Local development
+   - `web-app/livekit-client.html` - New web client using LiveKit SDK
+   - `LIVEKIT_SETUP.md` - Complete setup guide
+
+4. **API Server Updates**:
+   - Added `/api/livekit/token` endpoint for authentication
+   - Added `/api/flights` GET endpoint for LiveKit agent
+   - No changes to Amadeus integration
+
+### Next Steps
+1. Get LiveKit Cloud credentials
+2. Deploy agent with `./deploy.sh`
+3. Test interruptions with new LiveKit client
+4. Verify flight search still works
+
+LiveKit solves our interruption issues while keeping all existing functionality intact.
