@@ -30,6 +30,10 @@ class VoiceProcessor:
         # Flight search service
         self.flight_service = FlightSearchServer()
         
+        # Conversation memory (per session)
+        self.conversation_history = []
+        self.max_history = 10  # Keep last 10 exchanges
+        
         # Language detection settings
         self.supported_languages = {
             'en': 'English',
@@ -216,22 +220,31 @@ class VoiceProcessor:
                 
                 logger.info(f"Transcribed: {text}")
                 
+                # Add to conversation history
+                self.conversation_history.append({
+                    "role": "user",
+                    "content": text
+                })
+                
+                # Build messages with history
+                messages = [
+                    {
+                        "role": "system",
+                        "content": f"""You are a multilingual flight search assistant.
+                        Current language: {self.supported_languages.get(detected_language, detected_language)}.
+                        Always respond in the same language as the user.
+                        Help users find flights using the available functions.
+                        Remember the context from previous messages in the conversation."""
+                    }
+                ]
+                
+                # Add conversation history (limited to last N exchanges)
+                messages.extend(self.conversation_history[-self.max_history:])
+                
                 # Step 2: Process with LLM (GPT-4 with functions)
                 response = await self.client.chat.completions.create(
                     model="gpt-4-turbo-preview",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": f"""You are a multilingual flight search assistant.
-                            Current language: {self.supported_languages.get(detected_language, detected_language)}.
-                            Always respond in the same language as the user.
-                            Help users find flights using the available functions."""
-                        },
-                        {
-                            "role": "user",
-                            "content": text
-                        }
-                    ],
+                    messages=messages,
                     tools=ALL_FUNCTIONS,
                     tool_choice="auto"
                 )
@@ -278,6 +291,16 @@ class VoiceProcessor:
                     response_text = final_response.choices[0].message.content
                 else:
                     response_text = message.content
+                
+                # Add assistant's response to history
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": response_text
+                })
+                
+                # Trim history if too long
+                if len(self.conversation_history) > self.max_history * 2:
+                    self.conversation_history = self.conversation_history[-(self.max_history * 2):]
                 
                 # Step 3: Text-to-Speech
                 logger.info(f"Generating speech for: {response_text[:100]}...")
