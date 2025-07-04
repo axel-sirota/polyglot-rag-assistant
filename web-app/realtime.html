@@ -15,34 +15,40 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background-color: #f5f5f5;
             color: #333;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
         }
 
-        .container {
+        .main-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Left Panel - Controls */
+        .left-panel {
+            width: 350px;
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 800px;
+            box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
             padding: 30px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .app-header {
+            text-align: center;
+            margin-bottom: 30px;
         }
 
         h1 {
-            text-align: center;
-            margin-bottom: 10px;
             color: #2c3e50;
-            font-size: 28px;
+            font-size: 24px;
+            margin-bottom: 5px;
         }
 
         .subtitle {
-            text-align: center;
             color: #7f8c8d;
-            margin-bottom: 30px;
-            font-size: 16px;
+            font-size: 14px;
         }
 
         .status {
@@ -63,13 +69,13 @@
 
         .controls {
             display: flex;
+            flex-direction: column;
             gap: 10px;
-            justify-content: center;
             margin-bottom: 30px;
         }
 
         button {
-            padding: 12px 24px;
+            padding: 14px 24px;
             border: none;
             border-radius: 8px;
             font-size: 16px;
@@ -78,6 +84,7 @@
             transition: all 0.3s ease;
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
         }
 
@@ -109,20 +116,77 @@
             transform: none !important;
         }
 
-        .transcript-container {
-            min-height: 60px;
+        .info-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
             margin-bottom: 20px;
+        }
+
+        .info-section h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #2c3e50;
+        }
+
+        .info-section ol {
+            margin-left: 20px;
+            line-height: 1.8;
+            font-size: 14px;
+            color: #555;
+        }
+
+        .language-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .language-tag {
+            background: #e3f2fd;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            text-align: center;
+            color: #2980b9;
+        }
+
+        /* Right Panel - Chat */
+        .right-panel {
+            flex: 1;
+            background: #fafafa;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            background: white;
+            padding: 20px 30px;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .chat-container {
+            flex: 1;
+            padding: 20px 30px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
         }
 
         #user-transcript {
             padding: 15px;
-            background: #f8f9fa;
+            background: white;
             border-radius: 8px;
             border-left: 4px solid #3498db;
             font-style: italic;
             color: #555;
             display: none;
+            margin-bottom: 20px;
             animation: pulse 1.5s ease-in-out infinite;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         @keyframes pulse {
@@ -131,12 +195,7 @@
         }
 
         .messages {
-            max-height: 400px;
-            overflow-y: auto;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            flex: 1;
         }
 
         .message {
@@ -164,107 +223,116 @@
         }
 
         .message-text {
-            padding: 12px;
-            border-radius: 8px;
-            line-height: 1.5;
-        }
-
-        .user-message .message-text {
-            background: #e3f2fd;
-            margin-right: 50px;
-        }
-
-        .assistant-message .message-text {
-            background: #e8f5e9;
-            margin-left: 50px;
-        }
-
-        .info {
-            background: #fff3cd;
-            padding: 15px;
-            border-radius: 8px;
-            border-left: 4px solid #ffc107;
-            margin-bottom: 20px;
-            font-size: 14px;
+            padding: 14px 18px;
+            border-radius: 12px;
             line-height: 1.6;
+            font-size: 15px;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
-        .info strong {
-            display: block;
-            margin-bottom: 5px;
-            color: #856404;
+        .user-message {
+            margin-left: 20%;
         }
 
-        .language-indicator {
-            display: inline-block;
-            padding: 4px 12px;
-            background: #e3f2fd;
-            border-radius: 20px;
-            font-size: 12px;
-            color: #1976d2;
-            margin-left: 10px;
+        .assistant-message {
+            margin-right: 20%;
         }
 
-        /* Loading animation */
-        .loading {
-            display: inline-block;
+        .icon {
             width: 20px;
             height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
         }
 
         /* Responsive */
-        @media (max-width: 600px) {
-            .container {
-                padding: 20px;
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
             }
-
-            h1 {
-                font-size: 24px;
+            
+            .left-panel {
+                width: 100%;
+                height: auto;
+                max-height: 40vh;
             }
-
-            .user-message .message-text,
-            .assistant-message .message-text {
+            
+            .right-panel {
+                height: 60vh;
+            }
+            
+            .user-message,
+            .assistant-message {
                 margin: 0;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🌍 Polyglot Flight Assistant</h1>
-        <p class="subtitle">Speak naturally in any language - no button holding required!</p>
-        
-        <div class="info">
-            <strong>How it works:</strong>
-            Click "Start Listening" and speak naturally. The assistant will detect when you stop speaking and respond automatically. You can speak in any language - try "Find flights from Nueva York to París" or "北京到东京的航班" (Beijing to Tokyo flights).
+    <div class="main-container">
+        <div class="left-panel">
+            <div class="app-header">
+                <h1>🌍 Polyglot Flight Assistant</h1>
+                <div class="subtitle">Real-time Voice Interface</div>
+            </div>
+
+            <div id="status" class="status">Ready</div>
+
+            <div class="controls">
+                <button id="start-btn">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                    Start Listening
+                </button>
+                <button id="stop-btn" disabled>
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="6" y="4" width="4" height="16"></rect>
+                        <rect x="14" y="4" width="4" height="16"></rect>
+                    </svg>
+                    Stop
+                </button>
+            </div>
+
+            <div class="info-section">
+                <h3>How to use:</h3>
+                <ol>
+                    <li>Click "Start Listening"</li>
+                    <li>Speak naturally in any language</li>
+                    <li>Ask about flights</li>
+                    <li>Hear responses in your language</li>
+                </ol>
+            </div>
+
+            <div class="info-section">
+                <h3>Supported Languages:</h3>
+                <div class="language-grid">
+                    <span class="language-tag">English</span>
+                    <span class="language-tag">Spanish</span>
+                    <span class="language-tag">French</span>
+                    <span class="language-tag">German</span>
+                    <span class="language-tag">Italian</span>
+                    <span class="language-tag">Portuguese</span>
+                    <span class="language-tag">Chinese</span>
+                    <span class="language-tag">Japanese</span>
+                    <span class="language-tag">Korean</span>
+                    <span class="language-tag">Arabic</span>
+                    <span class="language-tag">Hindi</span>
+                    <span class="language-tag">Russian</span>
+                </div>
+            </div>
         </div>
-        
-        <div id="status" class="status">Ready to start</div>
-        
-        <div class="controls">
-            <button id="start-btn">
-                <span>🎤</span> Start Listening
-            </button>
-            <button id="stop-btn" disabled>
-                <span>⏹️</span> Stop
-            </button>
-        </div>
-        
-        <div class="transcript-container">
-            <div id="user-transcript"></div>
-        </div>
-        
-        <div id="messages" class="messages">
-            <!-- Messages will appear here -->
+
+        <div class="right-panel">
+            <div class="chat-header">
+                💬 Conversation
+            </div>
+            <div class="chat-container">
+                <div id="user-transcript"></div>
+                <div id="messages" class="messages"></div>
+            </div>
         </div>
     </div>
 
