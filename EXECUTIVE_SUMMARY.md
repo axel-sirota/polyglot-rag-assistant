@@ -480,3 +480,25 @@ Created comprehensive `local_test_setup.md` with:
 - Clear separation of concerns
 - Easy to understand project structure
 - Focused on demo essentials
+
+### 🧹 Additional Cleanup (Phase 2)
+
+#### Removed Obsolete Services (per new_plan.md architecture):
+- `services/anthropic_service.py` - Using OpenAI instead of Claude
+- `services/embeddings.py` - No longer doing RAG
+- `services/vector_store.py` - No FAISS/vector search needed
+- `agents/rag_agent.py` - RAG not needed with Realtime API
+
+#### Removed Other Files:
+- `PROMPT.md` - Referenced old MCP architecture
+- `polyglot-rag-readme.md` - Duplicate of README.md
+- `simple_demo.html` - Test file in root
+- `simple_web_test.html` - Test file in root
+- All `__pycache__` directories (1236 folders)
+- All `.pyc` files
+
+### 📊 Final Statistics
+- **Root directory**: 3 Python files, 1 shell script
+- **Total cleanup**: 27 files removed, 1236+ cache folders removed
+- **Services folder**: Reduced from 9 to 5 essential services
+- **Agents folder**: Reduced from 4 to 3 essential agents
