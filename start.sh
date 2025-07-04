@@ -28,4 +28,3 @@ echo "Press Ctrl+C to stop"
 echo ""
 
 # Run the server
-.venv/bin/python3 api_server.py
