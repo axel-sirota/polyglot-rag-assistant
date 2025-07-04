@@ -65,8 +65,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global instances
-voice_processor = VoiceProcessor()
+# Global flight service (stateless)
 flight_service = FlightSearchServer()
 
 # WebSocket connection manager
@@ -74,6 +73,7 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
         self.connection_data: Dict[WebSocket, Dict[str, Any]] = {}
+        self.voice_processors: Dict[WebSocket, VoiceProcessor] = {}
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -82,6 +82,10 @@ class ConnectionManager:
             "language": "auto",
             "session_id": None
         }
+        # Create a new voice processor for this connection
+        voice_processor = VoiceProcessor()
+        await voice_processor.initialize()
+        self.voice_processors[websocket] = voice_processor
         logger.info(f"WebSocket connected: {websocket.client}")
 
     def disconnect(self, websocket: WebSocket):
@@ -89,6 +93,8 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
         if websocket in self.connection_data:
             del self.connection_data[websocket]
+        if websocket in self.voice_processors:
+            del self.voice_processors[websocket]
         logger.info(f"WebSocket disconnected: {websocket.client}")
 
     async def send_json(self, websocket: WebSocket, data: Dict[str, Any]):
@@ -96,23 +102,25 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# Initialize voice processor on startup
+# Initialize services on startup
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    await voice_processor.initialize()
-    logger.info("Voice processor initialized")
+    logger.info("API server started - voice processors will be created per connection")
 
 # Root endpoint
 @app.get("/")
 async def root():
+    # Create a temporary voice processor just to get feature info
+    temp_processor = VoiceProcessor()
+    
     return {
         "name": "Polyglot Flight Assistant API",
         "version": "2.0.0",
         "status": "running",
         "features": {
-            "realtime_api": voice_processor.realtime_available,
-            "languages": list(voice_processor.supported_languages.keys()),
+            "realtime_api": "check_on_connect",
+            "languages": list(temp_processor.supported_languages.keys()),
             "websocket": "/ws",
             "endpoints": {
                 "search_flights": "/search_flights",
@@ -156,8 +164,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
                     continue
                 
-                # Process voice input
+                # Process voice input with the connection's voice processor
                 try:
+                    voice_processor = manager.voice_processors.get(websocket)
+                    if not voice_processor:
+                        raise Exception("Voice processor not initialized for this connection")
+                    
                     async for response in voice_processor.process_voice_input(
                         audio_data,
                         language=language,
@@ -253,6 +265,10 @@ async def process_audio(request: AudioQueryRequest):
         # Decode audio
         audio_data = base64.b64decode(request.audio)
         
+        # Create a new voice processor for this request
+        voice_processor = VoiceProcessor()
+        await voice_processor.initialize()
+        
         # Process voice input (non-streaming for REST API)
         async for response in voice_processor.process_voice_input(
             audio_data,
@@ -280,13 +296,14 @@ async def process_audio(request: AudioQueryRequest):
 @app.get("/status")
 async def get_status():
     """Get API status and configuration"""
+    temp_processor = VoiceProcessor()
+    
     return {
         "status": "operational",
         "services": {
-            "voice_processor": {
-                "initialized": voice_processor is not None,
-                "realtime_available": voice_processor.realtime_available if voice_processor else False,
-                "supported_languages": voice_processor.supported_languages if voice_processor else {}
+            "voice_processors": {
+                "active_connections": len(manager.voice_processors),
+                "supported_languages": temp_processor.supported_languages
             },
             "flight_service": {
                 "initialized": flight_service is not None,

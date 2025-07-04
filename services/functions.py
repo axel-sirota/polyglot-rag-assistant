@@ -1,7 +1,8 @@
 """OpenAI function definitions for flight search and other tools"""
 
-# For Realtime API, tools need a different format
+# For Realtime API, tools need type: "function" wrapper
 REALTIME_FLIGHT_SEARCH_FUNCTION = {
+    "type": "function",
     "name": "search_flights",
     "description": "Search for flights between airports with real-time pricing and availability",
     "parameters": {
@@ -47,6 +48,7 @@ FLIGHT_SEARCH_FUNCTION = {
 
 # For Realtime API
 REALTIME_GET_AIRPORT_CODE_FUNCTION = {
+    "type": "function",
     "name": "get_airport_code",
     "description": "Convert a city name to its primary airport IATA code",
     "parameters": {
@@ -63,6 +65,7 @@ REALTIME_GET_AIRPORT_CODE_FUNCTION = {
 
 # For Realtime API
 REALTIME_GET_FLIGHT_DETAILS_FUNCTION = {
+    "type": "function",
     "name": "get_flight_details",
     "description": "Get detailed information about a specific flight",
     "parameters": {
