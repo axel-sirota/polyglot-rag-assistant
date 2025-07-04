@@ -128,3 +128,66 @@ Created comprehensive test scripts in `/tests/` directory:
 3. Prepare demo queries in multiple languages
 4. Set up mobile app with Expo
 5. Create backup recorded demos
+
+## Latest Updates (Session 4)
+
+### 📱 Testing & Deployment Setup Complete
+
+Created comprehensive deployment infrastructure:
+
+1. **Deployment Guide** (`DEPLOYMENT_GUIDE.md`)
+   - Step-by-step instructions for local testing
+   - Phone access methods (3 options)
+   - Production deployment options
+   - Troubleshooting guide
+
+2. **Quick Start Scripts**
+   - `scripts/start-demo.sh` - One command to start everything
+   - `scripts/deploy-livekit.sh` - Deploy voice agent to cloud
+   - Both scripts are executable and ready
+
+3. **Access Methods for Testing**
+   - **Easiest**: Gradio auto-generates public URL (share=True)
+   - **Local Network**: Use computer's IP address
+   - **Ngrok**: Already configured (need to point to port 7860)
+
+### 🌐 How to Test on Phone/Web
+
+**Quickest Method**:
+```bash
+.venv/bin/python3 frontend/gradio_app.py
+# Look for: "Running on public URL: https://xxxxx.gradio.live"
+# Open this URL on any device!
+```
+
+**Local Network**:
+```bash
+# Find your IP: ifconfig | grep "inet " | grep -v 127.0.0.1
+# Access: http://YOUR_IP:7860
+```
+
+**Ngrok** (you have it running):
+```bash
+# Stop current ngrok and restart:
+ngrok http 7860
+# Use the new URL on phone
+```
+
+### 🚀 Deployment Architecture Clarified
+
+1. **Development** (Now):
+   - Everything runs locally
+   - Gradio creates public URLs automatically
+   - Phone testing via share URLs
+
+2. **Production** (Later):
+   - LiveKit Agent → LiveKit Cloud
+   - Backend → Cloud VM/Docker/K8s
+   - Frontend → CDN/Static hosting
+   - Mobile → App stores
+
+### ✅ Ready for Demo
+- Gradio interface running with public URL
+- Scripts created for easy deployment
+- Documentation complete for all testing scenarios
+- Ngrok configured (just needs port adjustment)
