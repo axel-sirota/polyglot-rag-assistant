@@ -1,37 +1,20 @@
 # Core dependencies
-python-dotenv>=1.0.0
-httpx>=0.25.2
-numpy<2
-nest-asyncio>=1.5.8
-
-# LiveKit and voice processing
-livekit>=0.15.0
-livekit-agents[openai,silero]>=0.8.0
-livekit-plugins-openai>=1.1.5
-livekit-plugins-silero>=0.6.3
-
-# AI/ML frameworks
-anthropic>=0.25.0
 openai>=1.30.0
-langchain>=0.2.0
-langchain-openai>=0.1.8
-langgraph>=0.0.65
-tiktoken>=0.7.0
+fastapi>=0.104.0
+websockets>=12.0
+httpx>=0.25.0
+python-dotenv>=1.0.0
+uvicorn>=0.24.0
 
-# Vector store and embeddings
-faiss-cpu
+# Audio processing
+pydantic>=2.0.0
 
-# Web interface
-gradio>=4.36.0
-
-# MCP (Model Context Protocol)
-mcp>=1.0.0
-
-# Logging and monitoring
+# Logging
 structlog>=24.1.0
 
-# Optional: For development
-pytest>=8.2.0
-pytest-asyncio>=0.23.7
-black>=24.4.0
-flake8>=7.1.0
+# Optional: Development tools (comment out for production)
+# pytest>=8.2.0
+# pytest-asyncio>=0.23.7
+
+# Optional: For demo interface only
+# gradio>=4.36.0
