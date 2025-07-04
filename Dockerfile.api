@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir fastapi uvicorn httpx python-dotenv
+
+# Copy API files
+COPY mcp_servers/flight_search_api.py .
+COPY services/flight_api.py ./services/
+COPY utils/ ./utils/
+
+# Expose port
+EXPOSE 8765
+
+# Run the API
+CMD ["uvicorn", "flight_search_api:app", "--host", "0.0.0.0", "--port", "8765"]
