@@ -4,7 +4,7 @@
 set -e
 
 # Configuration
-DOCKER_USERNAME=${DOCKER_USERNAME:-"your-dockerhub-username"}
+DOCKER_USERNAME=${DOCKER_USERNAME:-"axelsirota"}
 IMAGE_NAME="polyglot-api"
 TAG=${1:-"latest"}
 
