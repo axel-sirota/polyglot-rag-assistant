@@ -5,7 +5,6 @@ from agents.rag_agent import RAGAgent
 from services.embeddings import EmbeddingsService
 from services.vector_store import FAISSVectorStore
 from services.flight_api import FlightAPIWrapper
-from mcp.client import MCPClient
 import os
 from dotenv import load_dotenv
 import logging
@@ -29,12 +28,9 @@ class PolyglotRAGOrchestrator:
         self.vector_store = FAISSVectorStore(dimension=1536)
         self.flight_api = FlightAPIWrapper()
         
-        # Initialize MCP client for flight search
-        self.mcp_client = None  # Will be initialized async
-        
         # Initialize agents
         self.voice_agent = VoiceAgent()
-        self.flight_agent = None  # Will be initialized after MCP client
+        self.flight_agent = FlightSearchAgent(self.flight_api)
         self.rag_agent = RAGAgent(self.vector_store)
         
         # Conversation state
@@ -47,23 +43,16 @@ class PolyglotRAGOrchestrator:
     async def initialize(self):
         """Async initialization of components"""
         try:
-            # Initialize MCP client
-            mcp_port = int(os.getenv("MCP_SERVER_PORT", 8765))
-            self.mcp_client = MCPClient(f"localhost:{mcp_port}")
-            await self.mcp_client.connect()
-            
-            # Initialize flight agent with MCP client
-            self.flight_agent = FlightSearchAgent(self.mcp_client)
-            
             # Initialize voice agent
             await self.voice_agent.initialize()
+            
+            # Initialize flight API
+            await self.flight_api.initialize()
             
             logger.info("All components initialized successfully")
             
         except Exception as e:
             logger.error(f"Error during initialization: {e}")
-            # Fallback to direct API if MCP fails
-            self.flight_agent = FlightSearchAgent(None)
     
     def _initialize_sample_data(self):
         """Load sample travel data into vector store for demo purposes"""
@@ -217,8 +206,6 @@ class PolyglotRAGOrchestrator:
     
     async def cleanup(self):
         """Clean up resources"""
-        if self.mcp_client:
-            await self.mcp_client.disconnect()
         if self.flight_api:
             await self.flight_api.close()
         logger.info("Cleanup completed")
