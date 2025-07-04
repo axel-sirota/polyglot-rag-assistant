@@ -1,266 +1,272 @@
-# Local Test Setup & Deployment Guide
+# Local Testing & Deployment Guide - Simplified
 
-## Script Analysis & Cleanup Recommendations
+## 🎯 Quick Start (2 Commands)
 
-### 🚨 Current Script Confusion
-The root directory has 22 script files (.py and .sh) creating unnecessary complexity. Here's the analysis:
-
-### ✅ ESSENTIAL SCRIPTS (Keep These)
-
-#### Core Application Entry Points:
-1. **main.py** - Main orchestrator that initializes all agents and services
-2. **api_server.py** - FastAPI server for LiveKit token generation
-3. **livekit_voice_assistant.py** - LiveKit agent with voice capabilities
-
-#### Frontend Entry Points:
-4. **frontend/gradio_app.py** - Main Gradio interface (accessed via scripts)
-5. **frontend/realtime_gradio_app.py** - Realtime voice interface
-
-#### Deployment Scripts:
-6. **scripts/start-demo.sh** - Main demo launcher (comprehensive)
-7. **scripts/start-realtime-demo.sh** - Realtime demo launcher
-8. **deploy_livekit_cloud.sh** - LiveKit cloud deployment
-
-### ❌ REDUNDANT/CONFUSING SCRIPTS (Delete These)
-
-#### Duplicate/Test Scripts:
-- **simple_voice_agent.py** - Duplicate of livekit_voice_assistant.py
-- **working_voice_agent.py** - Another duplicate
-- **voice_agent_fixed.py** - Yet another duplicate
-- **tim_style_agent.py** - Experimental duplicate
-- **minimal_agent.py** - Minimal test version
-- **test_agent_connection.py** - One-off test script
-
-#### Test Scripts (Move to tests/ or delete):
-- **test_gradio.py** - Simple gradio test
-- **test_gradio_simple.py** - Another gradio test
-- **test_minimal.py** - Minimal test
-- **quick_demo.py** - Quick demo script
-- **start_app.py** - Wrapper for gradio_app.py (unnecessary)
-
-#### Redundant Shell Scripts:
-- **test_local.sh** - Redundant with start-demo.sh
-- **test_clean.sh** - Just kills processes
-- **simple_test.sh** - Another test script
-- **quick_test.sh** - Yet another test script
-- **start_livekit_demo.sh** - Old version
-
-#### Other:
-- **deploy_aws_ecs.sh** - AWS deployment (not for local/demo)
-- **setup.py** - Not needed for demo
-
-### 📁 FOLDER ANALYSIS
-
-#### Essential Folders:
-- **agents/** - Core agent implementations
-- **services/** - Business logic services  
-- **frontend/** - Gradio interfaces
-- **scripts/** - Deployment scripts
-- **utils/** - Utilities (logging)
-- **.venv/** - Virtual environment
-- **logs/** - Log files
-
-#### Can Be Removed:
-- **api/** - Only has empty __init__.py and unused main.py
-- **mcp_servers/** - Empty folder (MCP not available)
-- **web-app/** - HTML interface (not needed if using Gradio)
-- **mobile-app/** - React Native (not ready for demo)
-- **tests/** - Can keep but not essential for demo
-- **.mypy_cache/** - Type checking cache
-
-## 🚀 SIMPLIFIED DEPLOYMENT INSTRUCTIONS
-
-### Prerequisites
 ```bash
-# 1. Ensure Python 3.10+ is installed
-python3 --version
-
-# 2. Create and activate virtual environment
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# 3. Install dependencies
+# 1. Install dependencies
 .venv/bin/python3 -m pip install -r requirements.txt
 
-# 4. Create .env file with your API keys:
-cat > .env << EOF
-OPENAI_API_KEY=your-openai-key
-ANTHROPIC_API_KEY=your-anthropic-key
-LIVEKIT_API_KEY=your-livekit-key
-LIVEKIT_API_SECRET=your-livekit-secret
-LIVEKIT_URL=wss://your-app.livekit.cloud
-EOF
+# 2. Start the application
+.venv/bin/python3 api_server.py
 ```
 
-### Quick Start (Gradio Interface)
-```bash
-# Option 1: Use the start script (recommended)
-./scripts/start-demo.sh
+That's it! Open http://localhost:8000 in your browser.
 
-# Option 2: Manual start
-.venv/bin/python3 -m frontend.gradio_app
-```
+## 📁 Project Structure (Simplified)
 
-### LiveKit Agent Deployment
-```bash
-# Deploy to LiveKit Cloud
-./deploy_livekit_cloud.sh
-
-# Or run locally
-.venv/bin/python3 livekit_voice_assistant.py dev
-```
-
-### Access Points
-- **Gradio Interface**: http://localhost:7860
-- **Public URL**: Check terminal for Gradio share link
-- **Logs**: Check `logs/` directory
-
-## 🧹 CLEANUP COMMANDS
-
-### Remove Redundant Scripts
-```bash
-# Delete redundant Python scripts
-rm simple_voice_agent.py working_voice_agent.py voice_agent_fixed.py tim_style_agent.py
-rm minimal_agent.py test_agent_connection.py test_gradio.py test_gradio_simple.py
-rm test_minimal.py quick_demo.py start_app.py
-
-# Delete redundant shell scripts  
-rm test_local.sh test_clean.sh simple_test.sh quick_test.sh start_livekit_demo.sh
-
-# Delete setup.py (not needed)
-rm setup.py
-
-# Remove empty/unused folders
-rm -rf api/ mcp_servers/
-```
-
-### Optional Cleanup (if not using)
-```bash
-# Remove web-app if only using Gradio
-rm -rf web-app/
-
-# Remove mobile-app if not ready
-rm -rf mobile-app/
-
-# Remove type checking cache
-rm -rf .mypy_cache/
-```
-
-## 📋 SIMPLIFIED PROJECT STRUCTURE
-
-After cleanup:
 ```
 polyglot-rag-assistant/
-├── agents/           # Voice, flight, and RAG agents
-├── services/         # Core services
-├── frontend/         # Gradio interfaces
-├── scripts/          # Start scripts
-├── utils/           # Logging utilities
-├── logs/            # Application logs
-├── .venv/           # Python virtual environment
-├── main.py          # Main orchestrator
-├── api_server.py    # FastAPI token server
-├── livekit_voice_assistant.py  # LiveKit agent
-├── requirements.txt
-├── .env
-└── README.md
+├── api_server.py           # Main FastAPI backend (START HERE)
+├── main.py                 # Alternative entry point
+├── requirements.txt        # Only 7 dependencies now!
+├── services/              
+│   ├── flight_search_service.py  # Flight API integration
+│   ├── voice_processor.py        # Voice with Realtime API
+│   ├── realtime_client.py        # OpenAI WebSocket client
+│   └── functions.py              # OpenAI function definitions
+├── web-app/               
+│   ├── index.html               # Web interface
+│   └── app.js                   # WebSocket voice client
+└── mobile-app/            
+    └── react-native/            # Mobile app (for later)
 ```
 
-## 🎯 DEMO WORKFLOW
+## 🚀 Step-by-Step Deployment
 
-1. **Start Everything**:
-   ```bash
-   ./scripts/start-demo.sh
-   ```
+### Option 1: Web Interface (Recommended)
 
-2. **Test Voice Chat**:
-   - Open http://localhost:7860
-   - Click microphone
-   - Say: "Find flights from New York to Paris"
-
-3. **Monitor Logs**:
-   ```bash
-   tail -f logs/*.log
-   ```
-
-4. **Stop Everything**:
-   - Press Ctrl+C in terminal
-   - Or run: `pkill -f "python.*gradio"`
-
-## 🔧 TROUBLESHOOTING
-
-### Port Already in Use
 ```bash
-# Kill processes on port 7860
-lsof -ti:7860 | xargs kill -9
+# Terminal 1: Start backend
+.venv/bin/python3 api_server.py
+
+# Terminal 2: Start web server
+cd web-app
+python3 -m http.server 3000
+
+# Open browser
+# Backend API: http://localhost:8000
+# Web Interface: http://localhost:3000
 ```
 
-### Module Import Errors
+### Option 2: API Only (for testing)
+
+```bash
+# Start FastAPI with auto-reload
+.venv/bin/python3 -m uvicorn api.main:app --reload --port 8000
+
+# Test endpoints:
+curl http://localhost:8000/status
+curl http://localhost:8000/search_flights -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"origin": "JFK", "destination": "LAX", "departure_date": "2024-12-25"}'
+```
+
+### Option 3: Docker (Production-like)
+
+```bash
+# Create simple Dockerfile
+cat > Dockerfile << 'EOF'
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8000
+CMD ["python", "api_server.py"]
+EOF
+
+# Build and run
+docker build -t flight-assistant .
+docker run -p 8000:8000 \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  -e SERPAPI_API_KEY=$SERPAPI_API_KEY \
+  -e AVIATIONSTACK_API_KEY=$AVIATIONSTACK_API_KEY \
+  flight-assistant
+```
+
+## 🎤 Testing Voice Features
+
+### Browser Requirements
+- Chrome/Edge recommended (better WebRTC support)
+- Allow microphone permissions when prompted
+
+### Test Flow
+1. Open http://localhost:3000
+2. Click "Allow" for microphone access
+3. Hold "Hold to Talk" button and speak
+4. Release to send audio
+5. Wait for voice response
+
+### Example Queries
+- English: "Find flights from New York to London next week"
+- Spanish: "Busca vuelos de Madrid a Barcelona"
+- French: "Trouve des vols de Paris à Tokyo"
+- Chinese: "查找从北京到上海的航班"
+
+## 🔧 Configuration
+
+### Required API Keys (.env file)
+```env
+# OpenAI - Required for voice and chat
+OPENAI_API_KEY=sk-...
+
+# Flight Search - At least one required
+AVIATIONSTACK_API_KEY=...
+SERPAPI_API_KEY=...
+
+# Optional
+GRADIO_SHARE=false  # Set true for public URL
+```
+
+### Voice Settings
+Edit `services/voice_processor.py` to change:
+- Supported languages (line 35-47)
+- Voice models (line 275-290)
+- Realtime API settings (line 127-140)
+
+## 📱 Mobile App Deployment (When Ready)
+
+```bash
+# Navigate to mobile app
+cd mobile-app/react-native
+
+# Install Expo CLI
+npm install -g expo-cli
+
+# Install dependencies
+npm install
+
+# Start development
+expo start
+
+# For iOS App Store
+eas build --platform ios --auto-submit
+```
+
+## 🐛 Troubleshooting
+
+### "Cannot connect to WebSocket"
+- Check backend is running: `curl http://localhost:8000/status`
+- Check browser console for errors
+- Try different browser (Chrome/Edge)
+
+### "No audio response"
+- Check OpenAI API key is valid
+- Check browser allowed microphone
+- Look at backend logs for errors
+
+### "Flight search returns no results"
+- Verify at least one flight API key is set
+- Check date format is YYYY-MM-DD
+- Try common routes like JFK-LAX
+
+### "Module not found" errors
 ```bash
 # Reinstall dependencies
-.venv/bin/python3 -m pip install -r requirements.txt --upgrade
+.venv/bin/python3 -m pip install -r requirements.txt --force-reinstall
 ```
 
-### API Connection Issues
-- Check .env file has correct API keys
-- Verify internet connection
-- Check logs/gradio_app.log for errors
+## 🚢 Production Deployment
 
-## 📝 NOTES
-
-- This is a DEMO project - prioritizes working code over perfection
-- Use Gradio interface for quick demos
-- LiveKit agent can be deployed to cloud for production
-- All logging goes to logs/ directory
-- Virtual environment commands use .venv/bin/python3
-
-## 🗑️ ADDITIONAL CLEANUP (Based on Architecture Analysis)
-
-### Services That Can Be Removed (Following new_plan.md)
-According to the new architecture using OpenAI Realtime API, these services are obsolete:
-
+### Option 1: Single Server (Simplest)
 ```bash
-# Remove unused services (replaced by OpenAI Realtime API)
-rm services/anthropic_service.py    # Using OpenAI instead of Claude
-rm services/embeddings.py           # No longer doing RAG
-rm services/vector_store.py         # No FAISS/vector search needed
+# On Ubuntu/Debian server
+sudo apt update
+sudo apt install python3.11 python3-pip nginx
 
-# Remove old agents that use deprecated services
-rm agents/rag_agent.py              # RAG not needed with Realtime API
+# Clone and setup
+git clone <your-repo>
+cd polyglot-rag-assistant
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+# Run with systemd
+sudo nano /etc/systemd/system/flight-assistant.service
+# Add service configuration (see below)
+
+# Start service
+sudo systemctl enable flight-assistant
+sudo systemctl start flight-assistant
 ```
 
-### Test Files That Can Be Removed
+### Systemd Service File
+```ini
+[Unit]
+Description=Flight Voice Assistant
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/polyglot-rag-assistant
+Environment="PATH=/home/ubuntu/polyglot-rag-assistant/.venv/bin"
+ExecStart=/home/ubuntu/polyglot-rag-assistant/.venv/bin/python api_server.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Option 2: Cloud Platform (AWS/GCP/Azure)
+1. Use Docker image from Option 3 above
+2. Deploy to:
+   - AWS: ECS Fargate or App Runner
+   - GCP: Cloud Run
+   - Azure: Container Instances
+3. Set environment variables in platform
+4. Use platform's SSL/domain features
+
+### Option 3: Vercel/Railway (Easiest)
 ```bash
-# Remove integration tests for removed services
-rm tests/test_flight_integration.py # If using old architecture
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Deploy
+railway login
+railway init
+railway up
+
+# Set environment variables in Railway dashboard
 ```
 
-### Other Files to Consider Removing
-- **PROMPT.md** - If it references old MCP architecture
-- **context/plan.md** - Old plan, replaced by new_plan.md
-- **polyglot-rag-readme.md** - Duplicate of README.md?
+## 📊 Monitoring
 
-### Final Clean Structure (After Full Cleanup)
+### Basic Health Check
+```python
+# Add to api_server.py
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": "2.0.0"
+    }
 ```
-polyglot-rag-assistant/
-├── agents/
-│   ├── flight_agent.py         # Keep: Flight search logic
-│   ├── realtime_voice_agent.py # Keep: OpenAI Realtime
-│   └── voice_agent.py          # Keep: Fallback STT/TTS
-├── services/
-│   ├── flight_api.py           # Keep: Flight API wrapper
-│   ├── flight_search_service.py # Keep: Flight search
-│   ├── functions.py            # Keep: OpenAI functions
-│   ├── realtime_client.py      # Keep: Realtime WebSocket
-│   └── voice_processor.py      # Keep: Voice processing
-├── frontend/
-│   ├── gradio_app.py           # Keep: Main demo
-│   └── realtime_gradio_app.py  # Keep: Realtime demo
-├── scripts/                    # Keep all 3 scripts
-├── utils/                      # Keep: Logging
-├── logs/                       # Keep: Log files
-├── main.py                     # Keep: Orchestrator
-├── api_server.py               # Keep: Token server
-├── livekit_voice_assistant.py  # Keep: LiveKit agent
-└── deploy_livekit_cloud.sh     # Keep: Deployment
-```
+
+### Logging
+- All logs go to stdout by default
+- In production, pipe to file: `python api_server.py >> app.log 2>&1`
+- Or use logging service (CloudWatch, Stackdriver, etc.)
+
+## 🎯 Performance Tips
+
+1. **Enable caching** in flight service (already implemented)
+2. **Use CDN** for web-app files in production
+3. **Set up Redis** for session management (optional)
+4. **Use nginx** as reverse proxy for better performance
+
+## 💡 Next Steps
+
+1. **Test locally** with the 2-command quick start
+2. **Deploy to cloud** when ready for production
+3. **Add monitoring** for production use
+4. **Build mobile app** for App Store submission
+
+## 🆘 Need Help?
+
+1. Check the logs: Backend prints detailed errors
+2. Test API directly: Use `/docs` endpoint for Swagger UI
+3. Verify environment: All API keys must be valid
+4. Simple is better: Start with basic deployment first
+
+Remember: This is built for a demo, so focus on getting it working rather than perfect production setup!
