@@ -30,7 +30,10 @@ class FlightSearchAgent:
     def __init__(self, flight_api):
         self.llm = ChatOpenAI(
             model="gpt-4o-mini",
-            temperature=0.3
+            temperature=0.3,
+            model_kwargs={
+                "response_format": {"type": "json_object"}
+            }
         )
         self.flight_api = flight_api
         self.graph = self._build_graph()
@@ -109,35 +112,45 @@ class FlightSearchAgent:
             5. Number of passengers (default to 1 if not mentioned)
             6. Cabin class (economy/business/first, default to economy)
             
-            Respond in JSON format:
+            IMPORTANT: Respond ONLY with a valid JSON object, no additional text or explanation.
+            
+            Example response format:
             {{
-                "origin": "city or code",
-                "destination": "city or code",
-                "departure_date": "YYYY-MM-DD",
-                "return_date": "YYYY-MM-DD or null",
+                "origin": "JFK",
+                "destination": "CDG",
+                "departure_date": "2025-01-15",
+                "return_date": null,
                 "passengers": 1,
                 "cabin_class": "economy"
             }}
             
             If dates are relative (like "tomorrow", "next week"), calculate from today's date: {datetime.now().date()}
-            """
+            
+            JSON Response:"""
             
             response = await self.llm.ainvoke(prompt)
             
             # Parse the response
             try:
-                params = json.loads(response.content)
+                # Extract JSON from the response, handling markdown code blocks
+                content = response.content
+                params = self._extract_json_from_response(content)
                 
-                # Update state with extracted parameters
-                state["origin"] = params.get("origin")
-                state["destination"] = params.get("destination")
-                state["departure_date"] = params.get("departure_date")
-                state["return_date"] = params.get("return_date")
-                state["passengers"] = params.get("passengers", 1)
-                state["cabin_class"] = params.get("cabin_class", "economy")
+                if params:
+                    # Update state with extracted parameters
+                    state["origin"] = params.get("origin")
+                    state["destination"] = params.get("destination")
+                    state["departure_date"] = params.get("departure_date")
+                    state["return_date"] = params.get("return_date")
+                    state["passengers"] = params.get("passengers", 1)
+                    state["cabin_class"] = params.get("cabin_class", "economy")
+                else:
+                    logger.error(f"Failed to extract valid JSON from LLM response: {content[:200]}...")
+                    state["needs_clarification"] = True
                 
-            except json.JSONDecodeError:
-                logger.error("Failed to parse LLM response as JSON")
+            except Exception as e:
+                logger.error(f"Error parsing LLM response: {e}")
+                logger.debug(f"Response content: {response.content}")
                 state["needs_clarification"] = True
             
             return state
@@ -204,7 +217,7 @@ class FlightSearchAgent:
         return state
     
     async def search_flights_mcp(self, state: FlightSearchState) -> FlightSearchState:
-        """Call MCP server to search flights"""
+        """Call flight API to search flights"""
         try:
             # Prepare search parameters
             search_params = {
@@ -218,8 +231,8 @@ class FlightSearchAgent:
             if state.get("return_date"):
                 search_params["return_date"] = state["return_date"]
             
-            # Call MCP server
-            results = await self.mcp_client.call_tool("search_flights", search_params)
+            # Call flight API
+            results = await self.flight_api.search_flights(**search_params)
             
             state["search_results"] = results
             
@@ -280,6 +293,52 @@ class FlightSearchAgent:
         }
         
         return messages.get(language, messages["en"])
+    
+    def _extract_json_from_response(self, response_text: str) -> Optional[Dict]:
+        """Extract JSON from LLM response, handling various formats"""
+        try:
+            # First, try to parse the entire response as JSON
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            pass
+        
+        # Try to extract JSON from markdown code blocks
+        json_patterns = [
+            r'```json\s*\n(.*?)\n```',  # ```json ... ```
+            r'```\s*\n(.*?)\n```',       # ``` ... ```
+            r'\{[^{}]*\}',               # Simple JSON object
+            r'\{(?:[^{}]|\{[^{}]*\})*\}' # Nested JSON object
+        ]
+        
+        for pattern in json_patterns:
+            matches = re.findall(pattern, response_text, re.DOTALL)
+            for match in matches:
+                try:
+                    # Clean up the match
+                    cleaned = match.strip()
+                    # Try to parse as JSON
+                    result = json.loads(cleaned)
+                    if isinstance(result, dict):
+                        return result
+                except json.JSONDecodeError:
+                    continue
+        
+        # Try to find JSON-like structure and fix common issues
+        # Look for content between first { and last }
+        start_idx = response_text.find('{')
+        end_idx = response_text.rfind('}')
+        
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            potential_json = response_text[start_idx:end_idx + 1]
+            try:
+                # Remove any trailing commas before closing braces
+                cleaned_json = re.sub(r',\s*}', '}', potential_json)
+                cleaned_json = re.sub(r',\s*]', ']', cleaned_json)
+                return json.loads(cleaned_json)
+            except json.JSONDecodeError:
+                pass
+        
+        return None
     
     async def process_query(self, query: str, language: str = "en") -> Dict[str, Any]:
         """Main entry point to process a flight search query"""
