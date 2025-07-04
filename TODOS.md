@@ -15,13 +15,13 @@ Fixing the Polyglot RAG repository to use OpenAI Realtime API with fallback, rem
   - [x] Remove MCP_SERVER_PORT and related configs from .env
 
 ## Phase 2: Voice Pipeline Implementation (4 hours)
-- [ ] Create Realtime API client
-  - [ ] Create services/realtime_client.py
-  - [ ] Implement WebSocket connection to OpenAI Realtime API
-- [ ] Implement voice processing with fallback
-  - [ ] Create services/voice_processor.py
-  - [ ] Add Realtime API processing
-  - [ ] Add fallback to standard STT→LLM→TTS pipeline
+- [x] Create Realtime API client
+  - [x] Create services/realtime_client.py
+  - [x] Implement WebSocket connection to OpenAI Realtime API
+- [x] Implement voice processing with fallback
+  - [x] Create services/voice_processor.py
+  - [x] Add Realtime API processing
+  - [x] Add fallback to standard STT→LLM→TTS pipeline
 
 ## Phase 3: Simplified Frontend (4 hours)
 - [ ] Create single web interface
