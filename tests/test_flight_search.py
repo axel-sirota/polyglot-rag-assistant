@@ -15,7 +15,7 @@ load_dotenv()
 async def test_mock_flight_search():
     """Test flight search with mock data"""
     try:
-        from mcp_servers.flight_search_server import FlightSearchServer
+        from services.flight_search_service import FlightSearchServer
         
         print("✈️ Testing Flight Search\n")
         

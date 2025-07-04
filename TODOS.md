@@ -8,11 +8,11 @@ Fixing the Polyglot RAG repository to use OpenAI Realtime API with fallback, rem
   - [x] Delete mcp_servers/flight_search_server.py
   - [x] Delete mcp_servers/mcp_config.json
   - [x] Move mcp_servers/flight_search_api.py to services/flight_search_service.py
-  - [ ] Update all imports from mcp to use direct function calling
+  - [x] Update all imports from mcp to use direct function calling
 - [x] Create OpenAI function definitions
   - [x] Create services/functions.py with flight search function schema
-- [ ] Update environment variables
-  - [ ] Remove MCP_SERVER_PORT and related configs from .env
+- [x] Update environment variables
+  - [x] Remove MCP_SERVER_PORT and related configs from .env
 
 ## Phase 2: Voice Pipeline Implementation (4 hours)
 - [ ] Create Realtime API client
