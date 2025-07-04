@@ -213,3 +213,54 @@ lsof -ti:7860 | xargs kill -9
 - LiveKit agent can be deployed to cloud for production
 - All logging goes to logs/ directory
 - Virtual environment commands use .venv/bin/python3
+
+## 🗑️ ADDITIONAL CLEANUP (Based on Architecture Analysis)
+
+### Services That Can Be Removed (Following new_plan.md)
+According to the new architecture using OpenAI Realtime API, these services are obsolete:
+
+```bash
+# Remove unused services (replaced by OpenAI Realtime API)
+rm services/anthropic_service.py    # Using OpenAI instead of Claude
+rm services/embeddings.py           # No longer doing RAG
+rm services/vector_store.py         # No FAISS/vector search needed
+
+# Remove old agents that use deprecated services
+rm agents/rag_agent.py              # RAG not needed with Realtime API
+```
+
+### Test Files That Can Be Removed
+```bash
+# Remove integration tests for removed services
+rm tests/test_flight_integration.py # If using old architecture
+```
+
+### Other Files to Consider Removing
+- **PROMPT.md** - If it references old MCP architecture
+- **context/plan.md** - Old plan, replaced by new_plan.md
+- **polyglot-rag-readme.md** - Duplicate of README.md?
+
+### Final Clean Structure (After Full Cleanup)
+```
+polyglot-rag-assistant/
+├── agents/
+│   ├── flight_agent.py         # Keep: Flight search logic
+│   ├── realtime_voice_agent.py # Keep: OpenAI Realtime
+│   └── voice_agent.py          # Keep: Fallback STT/TTS
+├── services/
+│   ├── flight_api.py           # Keep: Flight API wrapper
+│   ├── flight_search_service.py # Keep: Flight search
+│   ├── functions.py            # Keep: OpenAI functions
+│   ├── realtime_client.py      # Keep: Realtime WebSocket
+│   └── voice_processor.py      # Keep: Voice processing
+├── frontend/
+│   ├── gradio_app.py           # Keep: Main demo
+│   └── realtime_gradio_app.py  # Keep: Realtime demo
+├── scripts/                    # Keep all 3 scripts
+├── utils/                      # Keep: Logging
+├── logs/                       # Keep: Log files
+├── main.py                     # Keep: Orchestrator
+├── api_server.py               # Keep: Token server
+├── livekit_voice_assistant.py  # Keep: LiveKit agent
+└── deploy_livekit_cloud.sh     # Keep: Deployment
+```
