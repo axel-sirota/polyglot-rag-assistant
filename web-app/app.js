@@ -96,8 +96,16 @@ class VoiceAssistant {
     
     async handleServerMessage(data) {
         switch (data.type) {
+            case 'user_transcript':
+                // Show what the user said
+                this.addUserMessage(data.text);
+                if (data.language) {
+                    this.updateDetectedLanguage(data.language);
+                }
+                break;
+                
             case 'transcript_delta':
-                // Real-time transcript update
+                // Real-time assistant transcript update
                 this.updateTranscript(data.text);
                 break;
                 
@@ -110,7 +118,9 @@ class VoiceAssistant {
                 
             case 'response_complete':
                 // Complete response received
-                this.addAssistantMessage(data.text);
+                if (data.text) {
+                    this.addAssistantMessage(data.text);
+                }
                 if (data.audio) {
                     await this.playAudio(data.audio);
                 }
@@ -253,7 +263,7 @@ class VoiceAssistant {
                 language: this.currentLanguage
             }));
             
-            this.addUserMessage('[Voice message]');
+            // Don't add message here - wait for server to send transcript
         };
         reader.readAsDataURL(audioBlob);
     }
@@ -279,6 +289,14 @@ class VoiceAssistant {
     
     async processTextQuery(text) {
         try {
+            // First, convert text to speech using Web Speech API or send to backend
+            // For now, let's send it to the backend's process_audio endpoint
+            // after converting to a simple audio format
+            
+            // Add the user's message immediately
+            this.addUserMessage(text);
+            
+            // Send to backend for processing
             const response = await fetch('http://localhost:8000/process_text', {
                 method: 'POST',
                 headers: {
@@ -292,7 +310,9 @@ class VoiceAssistant {
             
             const data = await response.json();
             if (data.success) {
-                this.addAssistantMessage(data.message || "Processing your request...");
+                // For now, show a processing message
+                // In a full implementation, this would trigger the voice pipeline
+                this.addAssistantMessage(data.message || "I understand you want to: " + text + ". Please use voice for flight searches.");
             }
         } catch (error) {
             console.error('Text query error:', error);
@@ -346,11 +366,34 @@ class VoiceAssistant {
     
     async playAudio(base64Audio) {
         try {
-            // Create audio element
-            const audio = new Audio(`data:audio/mp3;base64,${base64Audio}`);
+            // Decode base64 to blob
+            const byteCharacters = atob(base64Audio);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            
+            // Create blob with proper MIME type
+            const blob = new Blob([byteArray], { type: 'audio/mpeg' });
+            const audioUrl = URL.createObjectURL(blob);
+            
+            // Create and play audio
+            const audio = new Audio(audioUrl);
+            audio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+            };
+            
             await audio.play();
         } catch (error) {
             console.error('Failed to play audio:', error);
+            // Try alternative method
+            try {
+                const audio = new Audio(`data:audio/mp3;base64,${base64Audio}`);
+                await audio.play();
+            } catch (e) {
+                console.error('Alternative audio playback failed:', e);
+            }
         }
     }
     

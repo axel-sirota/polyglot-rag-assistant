@@ -170,6 +170,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         if response["type"] == "audio_delta" and response.get("audio"):
                             # Encode audio chunks
                             response["audio"] = base64.b64encode(response["audio"]).decode('utf-8')
+                        elif response["type"] == "response_complete":
+                            # Include the user's transcribed text
+                            if "input_text" in response:
+                                # First send the user's transcript
+                                await manager.send_json(websocket, {
+                                    "type": "user_transcript",
+                                    "text": response["input_text"],
+                                    "language": response.get("language", "en")
+                                })
                         
                         await manager.send_json(websocket, response)
                 
