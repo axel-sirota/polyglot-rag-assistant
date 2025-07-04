@@ -2,23 +2,26 @@
 
 ## Last Updated: July 4, 2025
 
-## 1. Voice Interruption Limitations ⚠️
+## 1. Voice Interruption - Critical Issues ⚠️ 🚨
 
-### Issue
-When user interrupts the assistant while speaking, the OpenAI Realtime API continues sending audio chunks from the previous response. Even though we clear the audio queue and stop playback, the API keeps streaming the remaining audio.
+### Current Problem (WORSE)
+Using `response.cancel` causes the assistant to stop speaking prematurely, even when there's no interruption. The assistant cuts itself off mid-sentence.
 
-### Current Mitigations
-- Client-side audio ducking (reduces volume to 20% when user speaks)
-- Audio queue clearing on interruption
-- Response ID tracking to discard interrupted audio
-- Skip playback of audio from interrupted responses
-- Send interrupt signal to server (though API doesn't immediately stop)
+### Previous Issues
+1. When user interrupts, OpenAI API continued sending all audio chunks
+2. `conversation.item.truncate` returned "item_id not found" errors
+3. Audio continued playing after interruption
+
+### Failed Attempts
+1. ❌ Using `conversation.item.truncate` with "current" - API error
+2. ❌ Using `response.cancel` - Assistant stops mid-sentence
+3. ❌ Client-side audio management - Audio chunks still arrive from API
+4. ❌ Response ID tracking - Helps but doesn't stop API sending chunks
 
 ### Root Cause
-OpenAI Realtime API limitation - can only stop at audio chunk boundaries, not instantly. The `conversation.item.truncate` API returns "item_id not found" errors when using "current" as item_id.
-
-### Fixed
-Changed to use `response.cancel` instead of `conversation.item.truncate`, and added `input_audio_buffer.clear` to clear any buffered user audio.
+The OpenAI Realtime API's VAD and response management doesn't align well with interruption expectations. The API either:
+- Continues sending all audio (original problem)
+- OR stops too aggressively (current problem with response.cancel)
 
 ### Potential Solutions
 1. Implement WebRTC connection instead of WebSocket for better control
