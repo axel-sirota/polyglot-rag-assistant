@@ -80,6 +80,106 @@ class VoiceProcessor:
             result = await self._process_standard(audio_data, language)
             yield result
     
+    async def process_continuous_audio(
+        self,
+        audio_chunk: bytes,
+        language: str = 'auto'
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Process continuous audio stream for real-time interaction"""
+        
+        if not self.realtime_available:
+            # Can't do continuous mode without Realtime API
+            yield {
+                "type": "error",
+                "error": "Continuous mode requires Realtime API access"
+            }
+            return
+        
+        try:
+            # Ensure we're connected
+            if not self.realtime_client or not self.realtime_client.is_connected:
+                await self.initialize()
+                if not self.realtime_available:
+                    yield {
+                        "type": "error", 
+                        "error": "Failed to connect to Realtime API"
+                    }
+                    return
+            
+            # Send audio chunk to Realtime API
+            await self.realtime_client.send_audio(audio_chunk)
+            
+            # Process any available events
+            # Note: In continuous mode, we don't commit audio immediately
+            # The VAD will determine when to process
+            async for event in self.realtime_client.process_events():
+                logger.debug(f"Continuous mode event: {event['type']}")
+                
+                if event["type"] == "user_transcript_delta":
+                    # Real-time transcription of user speech
+                    yield event
+                
+                elif event["type"] == "user_transcript":
+                    # Final user transcript
+                    yield event
+                    # Update conversation history
+                    self.conversation_history.append({
+                        "role": "user",
+                        "content": event["text"]
+                    })
+                
+                elif event["type"] == "transcript_delta":
+                    # Assistant's response transcription
+                    yield event
+                
+                elif event["type"] == "audio_delta":
+                    # Assistant's audio response
+                    yield event
+                
+                elif event["type"] == "function_call":
+                    # Handle function call
+                    result = await self._execute_function(
+                        event["name"],
+                        event["arguments"]
+                    )
+                    
+                    # Send result back
+                    await self.realtime_client.function_call_output(
+                        event["call_id"],
+                        result
+                    )
+                
+                elif event["type"] == "response_done":
+                    # Response completed
+                    response = event.get("response", {})
+                    # Update conversation history with assistant's response
+                    if response.get("output"):
+                        for output in response["output"]:
+                            if output.get("type") == "message":
+                                content = output.get("content", [])
+                                for item in content:
+                                    if item.get("type") == "text":
+                                        self.conversation_history.append({
+                                            "role": "assistant",
+                                            "content": item.get("text", "")
+                                        })
+                    
+                    yield {
+                        "type": "response_complete",
+                        "response": response
+                    }
+                
+                elif event["type"] == "error":
+                    logger.error(f"Realtime API error in continuous mode: {event.get('error')}")
+                    yield event
+                    
+        except Exception as e:
+            logger.error(f"Continuous audio processing error: {e}")
+            yield {
+                "type": "error",
+                "error": str(e)
+            }
+    
     async def _process_realtime(
         self, 
         audio_data: bytes,

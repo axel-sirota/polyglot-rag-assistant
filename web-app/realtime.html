@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polyglot Flight Assistant - Real-time Voice</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 800px;
+            padding: 30px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #2c3e50;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+
+        .status {
+            text-align: center;
+            padding: 12px;
+            background: #e8f4f8;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+            color: #2980b9;
+            transition: all 0.3s ease;
+        }
+
+        .status.error {
+            background: #fee;
+            color: #c0392b;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #start-btn {
+            background: #27ae60;
+            color: white;
+        }
+
+        #start-btn:hover:not(:disabled) {
+            background: #229954;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(39, 174, 96, 0.3);
+        }
+
+        #stop-btn {
+            background: #e74c3c;
+            color: white;
+        }
+
+        #stop-btn:hover:not(:disabled) {
+            background: #c0392b;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(231, 76, 60, 0.3);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .transcript-container {
+            min-height: 60px;
+            margin-bottom: 20px;
+        }
+
+        #user-transcript {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            font-style: italic;
+            color: #555;
+            display: none;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
+        .messages {
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .user-message .message-label {
+            color: #2980b9;
+        }
+
+        .assistant-message .message-label {
+            color: #27ae60;
+        }
+
+        .message-text {
+            padding: 12px;
+            border-radius: 8px;
+            line-height: 1.5;
+        }
+
+        .user-message .message-text {
+            background: #e3f2fd;
+            margin-right: 50px;
+        }
+
+        .assistant-message .message-text {
+            background: #e8f5e9;
+            margin-left: 50px;
+        }
+
+        .info {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #ffc107;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .info strong {
+            display: block;
+            margin-bottom: 5px;
+            color: #856404;
+        }
+
+        .language-indicator {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #e3f2fd;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #1976d2;
+            margin-left: 10px;
+        }
+
+        /* Loading animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .user-message .message-text,
+            .assistant-message .message-text {
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌍 Polyglot Flight Assistant</h1>
+        <p class="subtitle">Speak naturally in any language - no button holding required!</p>
+        
+        <div class="info">
+            <strong>How it works:</strong>
+            Click "Start Listening" and speak naturally. The assistant will detect when you stop speaking and respond automatically. You can speak in any language - try "Find flights from Nueva York to París" or "北京到东京的航班" (Beijing to Tokyo flights).
+        </div>
+        
+        <div id="status" class="status">Ready to start</div>
+        
+        <div class="controls">
+            <button id="start-btn">
+                <span>🎤</span> Start Listening
+            </button>
+            <button id="stop-btn" disabled>
+                <span>⏹️</span> Stop
+            </button>
+        </div>
+        
+        <div class="transcript-container">
+            <div id="user-transcript"></div>
+        </div>
+        
+        <div id="messages" class="messages">
+            <!-- Messages will appear here -->
+        </div>
+    </div>
+
+    <script src="realtime-app.js"></script>
+</body>
+</html>
