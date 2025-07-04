@@ -306,6 +306,24 @@ class VoiceProcessor:
                     }
                     break
                 
+                elif event["type"] == "interrupted":
+                    logger.info("User interrupted the assistant")
+                    yield {
+                        "type": "interrupted",
+                        "item_id": event.get("item_id")
+                    }
+                    # Clear any accumulated audio
+                    audio_chunks.clear()
+                    text_response = ""
+                
+                elif event["type"] == "user_speech_started":
+                    logger.debug("User started speaking")
+                    yield {"type": "user_speech_started"}
+                
+                elif event["type"] == "user_speech_stopped":
+                    logger.debug("User stopped speaking")
+                    yield {"type": "user_speech_stopped"}
+                
                 elif event["type"] == "error":
                     logger.error(f"Realtime API error: {event.get('error')}")
                     # Fall back to standard pipeline

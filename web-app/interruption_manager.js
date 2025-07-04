@@ -72,13 +72,16 @@ class InterruptionManager {
                 await this.truncateConversationItem();
             }
             
-            // Step 5: Reset processing state
+            // Step 5: Clear the input audio buffer to remove any echo
+            await this.clearInputAudioBuffer();
+            
+            // Step 6: Reset processing state
             this.isProcessing = false;
             this.isAssistantSpeaking = false;
             this.audioSampleCounter = 0;
             this.audioSampleCounterPlayed = 0;
             
-            // Step 6: Notify UI of interruption
+            // Step 7: Notify UI of interruption
             this.notifyUI('interrupted');
             
             // Step 7: Mark response as interrupted
@@ -196,6 +199,16 @@ class InterruptionManager {
         return !this.interruptedResponses.has(responseId) && !this.isUserSpeaking;
     }
     
+    // Clear input audio buffer to remove echo
+    async clearInputAudioBuffer() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            await this.ws.send(JSON.stringify({
+                type: 'input_audio_buffer.clear'
+            }));
+            console.log('Cleared input audio buffer to remove echo');
+        }
+    }
+    
     // Clean up old interrupted responses
     cleanupInterruptedResponses() {
         if (this.interruptedResponses.size > 10) {
@@ -212,6 +225,19 @@ class InterruptionManager {
             this.audioSampleCounter = 0;
             this.audioSampleCounterPlayed = 0;
         }
+    }
+    
+    // Handle interruption event from server
+    handleInterruption(itemId) {
+        console.log('Handling server interruption event', itemId);
+        // Clear audio queue
+        this.clearAudioQueue();
+        // Stop current audio
+        this.stopCurrentAudio();
+        // Reset state
+        this.isProcessing = false;
+        this.isAssistantSpeaking = false;
+        this.notifyUI('interrupted');
     }
 }
 

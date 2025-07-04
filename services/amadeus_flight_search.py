@@ -18,8 +18,10 @@ class AmadeusFlightSearch:
     def __init__(self):
         self.client_id = os.getenv("AMADEUS_CLIENT_ID", "pu69gvJcqzHXJfNQDjFGGHT6s4oC8V9e")
         self.client_secret = os.getenv("AMADEUS_CLIENT_SECRET", "p8M2AAkmJnJvn82E")
-        self.base_url = "https://api.amadeus.com/v2"
-        self.auth_url = "https://api.amadeus.com/v1/security/oauth2/token"
+        # Use test or production URL based on environment variable
+        amadeus_base = os.getenv("AMADEUS_BASE_URL", "api.amadeus.com")
+        self.base_url = f"https://{amadeus_base}/v2"
+        self.auth_url = f"https://{amadeus_base}/v1/security/oauth2/token"
         self.http_client = httpx.AsyncClient(timeout=30.0)
         self.access_token = None
         self.token_expiry = None
@@ -95,6 +97,10 @@ class AmadeusFlightSearch:
             if travel_class != "ECONOMY":
                 params["travelClass"] = travel_class.upper()
             
+            # Add non-stop filter if looking for direct flights
+            params["nonStop"] = "false"  # Include both direct and connecting flights
+            params["max"] = 50  # Get more results to find direct flights
+            
             # Make API request
             headers = {
                 "Authorization": f"Bearer {token}",
@@ -109,7 +115,21 @@ class AmadeusFlightSearch:
             
             if response.status_code == 200:
                 data = response.json()
-                return self._format_amadeus_results(data)
+                results = self._format_amadeus_results(data)
+                
+                # Log airlines found
+                airlines = set(f["airline_code"] for f in results)
+                logger.info(f"Airlines found: {airlines}")
+                
+                # Check for direct flights
+                direct_flights = [f for f in results if f.get("stops", 0) == 0]
+                logger.info(f"Direct flights found: {len(direct_flights)}")
+                
+                # Check for American Airlines
+                aa_flights = [f for f in results if f.get("airline_code") == "AA"]
+                logger.info(f"American Airlines flights found: {len(aa_flights)}")
+                
+                return results
             else:
                 logger.error(f"Amadeus search failed: {response.status_code} - {response.text}")
                 # Return empty list to fall back to mock data
