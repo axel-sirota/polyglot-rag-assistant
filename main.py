@@ -125,6 +125,8 @@ class PolyglotRAGOrchestrator:
                     return result["clarification_message"]
                 
                 flight_results = result["flight_results"]
+                # Store for Gradio interface
+                self.last_flight_results = flight_results
             
             # 3. Generate final answer with Claude
             answer = await self.rag_agent.answer_with_context(
