@@ -87,8 +87,14 @@ Streams response audio back → Browser plays audio
 
 #### 5. Enhanced Logging System
 - Created session-based logging in `utils/session_logging.py`
-- Logs to both stdout and files in `logs/service/` directory
-- Each service gets its own timestamped log file
+- Logs to both stdout and service-specific directories
+- Each service gets its own directory: `logs/{service_name}/`
+- Log files are timestamped: `YYYYMMDD_HHMMSS_{service_name}.log`
+- Services using logging:
+  - `api_server` → `logs/api_server/`
+  - `flight_search_api` → `logs/flight_search_api/`
+  - `realtime_client` → `logs/realtime_client/`
+  - `voice_processor` → `logs/voice_processor/`
 
 ### Current Architecture
 
@@ -187,5 +193,20 @@ All in `.env` file:
 - `AVIATIONSTACK_API_KEY` - For flight search
 - `SERPAPI_API_KEY` - For flight search fallback
 
-### Latest Error Fixed
-The "Object of type bytes is not JSON serializable" error was fixed by encoding audio bytes to base64 before JSON serialization in the WebSocket responses.
+### Latest Fixes
+
+#### 1. Fixed Realtime API Content Type Error
+- Changed from "text" to "input_text" in `send_text` method
+- Error: "Invalid value: 'text'. Supported values are: 'input_text' and 'input_audio'"
+- Fixed in: `services/realtime_client.py` line 127
+
+#### 2. Improved Logging Structure  
+- Changed from hardcoded `logs/service/` to `logs/{service_name}/`
+- Each service now has its own log directory for better organization
+- Fixed in: `utils/session_logging.py` line 20
+
+#### 3. Fixed Continuous Audio Connection
+- Moved connection logic to `start_continuous_session` method
+- Properly maintains WebSocket connection for real-time streaming
+- Added background event processing task
+- Fixed in: `services/voice_processor.py` lines 83-118

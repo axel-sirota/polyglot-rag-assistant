@@ -17,7 +17,7 @@ def setup_session_logging(service_name: str, session_id: str = None) -> logging.
         Configured logger instance
     """
     # Create logs directory structure
-    logs_dir = Path("logs") / "service"
+    logs_dir = Path("logs") / service_name
     logs_dir.mkdir(parents=True, exist_ok=True)
     
     # Generate timestamp and filename
