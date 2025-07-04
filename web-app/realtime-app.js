@@ -13,6 +13,12 @@ class RealtimeVoiceAssistant {
         this.audioQueue = [];
         this.isPlaying = false;
         
+        // Audio interruption handling
+        this.currentSource = null;
+        this.gainNode = null;
+        this.isUserSpeaking = false;
+        this.lastUserSpeechTime = 0;
+        
         // UI elements
         this.statusEl = document.getElementById('status');
         this.transcriptEl = document.getElementById('user-transcript');
@@ -100,6 +106,10 @@ class RealtimeVoiceAssistant {
             sampleRate: this.sampleRate
         });
         
+        // Create gain node for audio ducking
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.connect(this.audioContext.destination);
+        
         // Resume audio context if suspended (required for some browsers)
         if (this.audioContext.state === 'suspended') {
             await this.audioContext.resume();
@@ -168,6 +178,8 @@ class RealtimeVoiceAssistant {
             case 'user_transcript_delta':
                 // Show real-time transcription as user speaks
                 this.updateTranscript(data.delta);
+                // User is speaking - duck audio
+                this.handleUserSpeaking();
                 break;
                 
             case 'user_transcript':
@@ -266,9 +278,13 @@ class RealtimeVoiceAssistant {
             // Play the audio
             const source = this.audioContext.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(this.audioContext.destination);
+            source.connect(this.gainNode); // Connect through gain node for ducking
+            
+            // Keep reference to current source for interruption
+            this.currentSource = source;
             
             source.onended = () => {
+                this.currentSource = null;
                 // Play next chunk in queue
                 this.playAudioQueue();
             };
@@ -373,6 +389,50 @@ class RealtimeVoiceAssistant {
                 chatContainer.scrollTop = chatContainer.scrollHeight;
             }, 100);
         }
+    }
+    
+    handleUserSpeaking() {
+        this.isUserSpeaking = true;
+        this.lastUserSpeechTime = Date.now();
+        
+        // Duck assistant audio to 20% when user speaks
+        if (this.gainNode) {
+            this.gainNode.gain.setTargetAtTime(0.2, this.audioContext.currentTime, 0.1);
+        }
+        
+        // Send interrupt signal to server
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'interrupt'
+            }));
+        }
+        
+        // Clear audio queue to stop queued responses
+        if (this.audioQueue.length > 0) {
+            console.log(`Clearing ${this.audioQueue.length} audio chunks due to interruption`);
+            this.audioQueue = [];
+        }
+        
+        // Stop current audio playback
+        if (this.currentSource) {
+            try {
+                this.currentSource.stop();
+                this.currentSource = null;
+            } catch (e) {
+                // Already stopped
+            }
+        }
+        
+        // Schedule restoration of audio level
+        setTimeout(() => {
+            if (Date.now() - this.lastUserSpeechTime > 500) {
+                this.isUserSpeaking = false;
+                // Restore audio level
+                if (this.gainNode) {
+                    this.gainNode.gain.setTargetAtTime(1.0, this.audioContext.currentTime, 0.1);
+                }
+            }
+        }, 600);
     }
 }
 
