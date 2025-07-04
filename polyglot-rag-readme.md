@@ -1,87 +1,169 @@
-# Polyglot RAG - Setup & Deployment Guide
+# Polyglot RAG Assistant - Setup & Deployment Guide
 
-A multilingual voice-enabled flight search assistant powered by LiveKit, OpenAI, and Anthropic Claude.
+🌍 A multilingual, voice-enabled flight search assistant powered by LiveKit, OpenAI, Anthropic Claude, and LangGraph for autonomous RAG capabilities.
 
-## 🚀 Quick Start (You have 3 days!)
+## 📁 Project Structure
 
+```
+polyglot-rag-assistant/
+│
+├── backend/                    # Core backend services
+│   ├── agent/                  # LiveKit agent implementation
+│   │   ├── __init__.py
+│   │   ├── main.py            # LiveKit agent entry point
+│   │   └── requirements.txt
+│   │
+│   ├── mcp_servers/           # Model Context Protocol servers
+│   │   ├── __init__.py
+│   │   └── flight_search_server.py
+│   │
+│   ├── rag/                   # RAG implementation
+│   │   ├── __init__.py
+│   │   ├── embeddings.py      # OpenAI embeddings
+│   │   ├── vector_store.py    # FAISS vector store
+│   │   └── retrieval.py       # RAG pipeline
+│   │
+│   ├── langgraph/             # Autonomous agent logic
+│   │   ├── __init__.py
+│   │   ├── flight_agent.py    # Flight search agent
+│   │   └── workflows.py       # LangGraph workflows
+│   │
+│   ├── api/                   # FastAPI services
+│   │   ├── __init__.py
+│   │   └── main.py
+│   │
+│   └── utils/                 # Shared utilities
+│       ├── __init__.py
+│       ├── config.py
+│       └── flight_apis.py     # Flight API integrations
+│
+├── web-app/                   # Web interface
+│   ├── gradio_demo.py         # Gradio interface
+│   ├── static/                # Static assets
+│   └── requirements.txt
+│
+├── mobile-app/                # Mobile applications
+│   └── react-native/          # React Native app
+│       ├── App.tsx
+│       ├── package.json
+│       └── components/
+│
+├── docker/                    # Docker configurations
+│   ├── docker-compose.yml
+│   ├── Dockerfile.backend
+│   └── Dockerfile.web
+│
+├── scripts/                   # Deployment scripts
+│   ├── demo.sh               # Quick demo launcher
+│   └── deploy.sh             # Production deployment
+│
+├── .env.example              # Environment template
+├── requirements.txt          # Root requirements
+└── README.md                # This file
+```
+
+## 🚀 Quick Start (3-Day Sprint Guide)
+
+### Day 1: Core Setup & Backend
 ```bash
 # Clone and setup
-git clone <your-repo>
-cd polyglot-rag
+git clone https://github.com/axel-sirota/polyglot-rag-assistant
+cd polyglot-rag-assistant
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
-npm install -g expo-cli @livekit/cli
 
-# Copy environment file
+# Install LiveKit CLI
+curl -sSL https://get.livekit.io/cli | bash
+
+# Copy and configure environment
 cp .env.example .env
-# Add your keys (see below)
+# Add your API keys (see credentials section)
 
-# Run everything
-./demo.sh
+# Test backend components
+cd backend && python -m pytest
+```
+
+### Day 2: Voice & Web Interface
+```bash
+# Start MCP Server
+cd backend
+python -m mcp_servers.flight_search_server
+
+# Deploy LiveKit agent (new terminal)
+cd backend/agent
+lk cloud agent deploy --project polyglot-rag
+
+# Launch Gradio interface (new terminal)
+cd web-app
+python gradio_demo.py --share
+```
+
+### Day 3: Mobile & Integration Testing
+```bash
+# Setup mobile app
+cd mobile-app/react-native
+npm install
+expo start --tunnel
+
+# Run full system test
+./scripts/demo.sh
 ```
 
 ## 🔑 Required Credentials
 
-### 1. LiveKit Cloud (REQUIRED)
+### 1. LiveKit Cloud (REQUIRED for voice features)
 Sign up at https://cloud.livekit.io
 
 ```bash
-# Get your credentials from LiveKit Cloud dashboard
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=APIxxxxxxxxxxxxx
 LIVEKIT_API_SECRET=secretxxxxxxxxxxxxx
-
-# Install LiveKit CLI
-curl -sSL https://get.livekit.io/cli | bash
-lk cloud login
 ```
 
-### 2. OpenAI (REQUIRED)
+### 2. OpenAI (REQUIRED for STT/TTS/embeddings)
 Get from https://platform.openai.com/api-keys
 
 ```bash
 OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxx
 
-# You'll need access to:
-# - Whisper (speech-to-text)
-# - TTS (text-to-speech)
-# - GPT-4o-mini (for agents)
-# - text-embedding-3-small
+# Required models:
+# - whisper-1 (speech-to-text)
+# - tts-1 (text-to-speech)
+# - gpt-4o-mini (agent logic)
+# - text-embedding-3-small (RAG embeddings)
 ```
 
-### 3. Anthropic Claude (REQUIRED)
+### 3. Anthropic Claude (REQUIRED for advanced reasoning)
 Get from https://console.anthropic.com/
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
-
-# Make sure you have access to:
-# - claude-3-5-sonnet-20241022
+# Requires: claude-3-5-sonnet-20241022
 ```
 
 ### 4. Flight Search API (CHOOSE ONE)
 
-#### Option A: Aviationstack (Recommended - Free tier)
-Sign up at https://aviationstack.com/signup/free
-
+#### Option A: Aviationstack (Free tier available)
 ```bash
 AVIATIONSTACK_API_KEY=xxxxxxxxxxxxx
 # Free: 100 requests/month
 ```
 
-#### Option B: SerpAPI
-Sign up at https://serpapi.com/
-
+#### Option B: Amadeus (Production ready)
 ```bash
-SERPAPI_API_KEY=xxxxxxxxxxxxx
-# Free trial available
+AMADEUS_CLIENT_ID=xxxxxxxxxxxxx
+AMADEUS_CLIENT_SECRET=xxxxxxxxxxxxx
+# Test environment available
 ```
 
-#### Option C: RapidAPI (Multiple flight APIs)
-Sign up at https://rapidapi.com/
-
+#### Option C: SerpAPI (Web scraping fallback)
 ```bash
-RAPIDAPI_KEY=xxxxxxxxxxxxx
-# Various free tiers
+SERPAPI_API_KEY=xxxxxxxxxxxxx
 ```
 
 ### Complete `.env` file:
@@ -99,313 +181,241 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
 
 # Flight API (Choose one)
 AVIATIONSTACK_API_KEY=xxxxxxxxxxxxx
-# OR
-SERPAPI_API_KEY=xxxxxxxxxxxxx
+# AMADEUS_CLIENT_ID=xxxxxxxxxxxxx
+# AMADEUS_CLIENT_SECRET=xxxxxxxxxxxxx
 
 # MCP Server
 MCP_SERVER_PORT=8765
 
+# Vector Database
+FAISS_INDEX_PATH=./data/faiss_index
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSION=1024
+
 # Development
 GRADIO_SHARE=true
+GRADIO_SERVER_PORT=7860
 EXPO_PUBLIC_API_URL=http://localhost:8000
+
+# Redis Cache (optional)
+REDIS_URL=redis://localhost:6379
 ```
 
-## 🧪 Local Testing
+## 🏗️ Architecture Overview
 
-### 1. Test LiveKit Connection
-```bash
-# Test LiveKit CLI is working
-lk --version
-lk cloud list-projects
+### Core Components
 
-# Create a test room
-lk room create test-room
+1. **Voice Pipeline (LiveKit + OpenAI)**
+   - Silero VAD for voice activity detection
+   - OpenAI Whisper for STT
+   - OpenAI TTS for speech synthesis
+   - LiveKit Cloud for WebRTC infrastructure
 
-# Generate test tokens
-lk token create --identity test-user --room test-room
-```
+2. **RAG System (FAISS + OpenAI Embeddings)**
+   - Document ingestion and chunking
+   - Vector storage with FAISS
+   - Hybrid search (semantic + keyword)
+   - Context-aware retrieval
 
-### 2. Test Backend Components
+3. **Autonomous Agent (LangGraph)**
+   - Intent detection and routing
+   - Multi-step parameter extraction
+   - External API orchestration
+   - Fallback mechanisms
 
-```bash
-# Test MCP Server
-cd backend
-python -m mcp_servers.flight_search_server
+4. **Flight Search Integration**
+   - Primary: Aviationstack/Amadeus
+   - Fallback: Web scraping via SerpAPI
+   - Caching layer for common queries
 
-# In another terminal, test the MCP server
-curl http://localhost:8765/health
+## 🧪 Testing Components
 
-# Test voice agent locally (without LiveKit Cloud)
-python main.py --dev
-```
-
-### 3. Test API Connections
+### 1. Test Voice Pipeline
 ```python
-# Create test_apis.py
-import os
-from dotenv import load_dotenv
-import openai
-import anthropic
+# test_voice.py
+import asyncio
+from backend.agent.voice_pipeline import VoiceRAGPipeline
 
-load_dotenv()
+async def test_voice():
+    pipeline = VoiceRAGPipeline()
+    
+    # Test with sample audio
+    with open("test_audio.mp3", "rb") as f:
+        result = await pipeline.process_voice_input(f)
+        print(f"Response: {result}")
 
-# Test OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
-response = openai.audio.transcriptions.create(
-    model="whisper-1",
-    file=open("test_audio.mp3", "rb")
-)
-print(f"✅ OpenAI Whisper: {response.text}")
-
-# Test Anthropic
-client = anthropic.Anthropic()
-response = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
-    max_tokens=50,
-    messages=[{"role": "user", "content": "Hello"}]
-)
-print(f"✅ Anthropic Claude: {response.content[0].text}")
-
-# Test Flight API
-# ... your chosen API test
+asyncio.run(test_voice())
 ```
 
-## 🌐 Web App Deployment
+### 2. Test RAG System
+```python
+# test_rag.py
+from backend.rag.vector_store import FAISSVectorStore
+from backend.rag.retrieval import RAGPipeline
 
-### Option 1: Gradio (Quick Demo - Day 1-2)
+# Initialize
+vector_store = FAISSVectorStore()
+rag = RAGPipeline(vector_store)
 
-```bash
-cd web-app
-python gradio_demo.py
+# Test query
+response = rag.query("Find flights from NYC to Paris")
+print(response)
 ```
 
-This will output:
-```
-Running on local URL:  http://127.0.0.1:7860
-Running on public URL: https://xxxxx.gradio.live
-```
+### 3. Test Flight Agent
+```python
+# test_agent.py
+from backend.langgraph.flight_agent import FlightSearchAgent
 
-Share the public URL for instant demo access!
-
-#### Gradio Tips:
-- Use `share=True` for public URL
-- Use `server_name="0.0.0.0"` for network access
-- Add `auth=("demo", "password")` for basic auth
-
-### Option 2: Production Web (Day 3 if time)
-
-```bash
-# Simple Python server for local testing
-cd web-app
-python -m http.server 8080
-
-# For production, deploy to Vercel
-npm i -g vercel
-vercel --prod
+agent = FlightSearchAgent()
+result = agent.search({
+    "query": "I need a flight from New York to London next week"
+})
+print(result)
 ```
 
-### Option 3: Expose Local via Ngrok
-```bash
-# If Gradio share isn't working
-ngrok http 7860
-```
+## 🌐 Web Interface (Gradio)
+
+The Gradio interface provides:
+- Voice input/output
+- Multilingual support
+- Real-time streaming responses
+- Flight search visualization
+- Conversation history
+
+Access at: `http://localhost:7860` or public URL when using `--share`
 
 ## 📱 Mobile App Deployment
 
-### 1. Quick Setup with Expo
+### Quick Setup with Expo
 
 ```bash
 cd mobile-app/react-native
-
-# Install dependencies
 npm install
 
-# Start Expo dev server
+# Configure backend URL in App.tsx
+const BACKEND_URL = "http://YOUR_IP:8000"
+const LIVEKIT_URL = "wss://your-project.livekit.cloud"
+
+# Start development server
 expo start --tunnel
 ```
 
-This generates a QR code. On your phone:
-- **iOS**: Scan with Camera app
-- **Android**: Scan with Expo Go app
+### Testing on Device
+- **iOS**: Scan QR code with Camera app
+- **Android**: Use Expo Go app
 
-### 2. Configure Mobile Backend
+## 🚀 Production Deployment
 
-```typescript
-// In App.tsx, update the URL
-const LIVEKIT_URL = "wss://your-project.livekit.cloud";
-
-// For local testing
-const LIVEKIT_URL = "ws://192.168.1.100:7880"; // Your computer's IP
-```
-
-### 3. Quick Mobile Deployment
-
-#### For Demo (Recommended):
-```bash
-# Just use Expo Go - no build needed!
-expo start --tunnel
-# Share the exp://xxx.xxx.xxx URL
-```
-
-#### For TestFlight/Beta (If time):
-```bash
-# iOS
-expo build:ios
-
-# Android APK
-expo build:android -t apk
-```
-
-## 🚀 LiveKit Cloud Deployment
-
-### 1. Deploy the Agent
+### Using Docker Compose
 
 ```bash
-cd backend
+# Build and start all services
+docker-compose up --build
 
-# First time setup
-lk cloud agent scaffold
+# Scale backend services
+docker-compose up --scale backend=3
+```
 
-# Deploy
+### LiveKit Cloud Deployment
+
+```bash
+cd backend/agent
+
+# Deploy agent to LiveKit Cloud
 lk cloud agent deploy --project polyglot-rag
 
-# Check logs
-lk cloud logs -f
-```
-
-### 2. Get Connection Details
-
-```bash
-# Get your WebSocket URL
-lk cloud project info
-
-# It will show:
-# URL: wss://polyglot-rag.livekit.cloud
-# API Key: APIxxxxx
-# Secret: secretxxxxx
-```
-
-## 🎤 Testing Everything Together
-
-### 1. Full System Test
-```bash
-# Terminal 1: MCP Server
-cd backend && python -m mcp_servers.flight_search_server
-
-# Terminal 2: Deploy Agent
-cd backend && lk cloud agent deploy
-
-# Terminal 3: Web App
-cd web-app && python gradio_demo.py --share
-
-# Terminal 4: Mobile
-cd mobile-app/react-native && expo start --tunnel
-```
-
-### 2. Test Conversation Flow
-
-Try these in order:
-1. **English**: "Find flights from New York to Paris next week"
-2. **Spanish**: "Buscar vuelos de Madrid a Barcelona"
-3. **French**: "Chercher des vols Paris Londres"
-4. **Switch Languages**: Start in English, continue in Spanish
-
-### 3. Monitor Everything
-
-```bash
-# LiveKit logs
+# Monitor logs
 lk cloud logs -f --project polyglot-rag
+```
 
-# Local logs
-tail -f backend/logs/*.log
+### Kubernetes Deployment (Optional)
+
+```bash
+# Apply configurations
+kubectl apply -f k8s/
+
+# Check status
+kubectl get pods -n polyglot-rag
 ```
 
 ## 🔧 Troubleshooting
 
-### LiveKit Issues
-```bash
-# Can't connect?
-lk cloud project list
-lk room list
+### Common Issues
 
-# Reset everything
-lk room delete --all
-lk cloud agent stop
-```
+1. **LiveKit Connection Failed**
+   ```bash
+   # Verify credentials
+   lk cloud project list
+   
+   # Test connection
+   lk room create test-room
+   ```
 
-### API Rate Limits
-```python
-# Add delays if hitting limits
-import time
-time.sleep(0.5)  # Between API calls
-```
+2. **API Rate Limits**
+   - Add delays between API calls
+   - Implement exponential backoff
+   - Use Redis caching
 
-### Mobile Can't Connect
-```bash
-# Check your IP
-ifconfig | grep inet
+3. **Voice Recognition Issues**
+   - Check microphone permissions
+   - Verify Whisper API access
+   - Test with different audio formats
 
-# Update mobile app config with your computer's IP
-const LOCAL_IP = "192.168.1.XXX";
-```
+4. **Mobile App Can't Connect**
+   ```bash
+   # Find your local IP
+   ifconfig | grep inet  # Mac/Linux
+   ipconfig              # Windows
+   
+   # Update App.tsx with correct IP
+   ```
 
-### Gradio Share Failed
-```bash
-# Use ngrok instead
-pip install pyngrok
-# Add to your gradio_demo.py:
-from pyngrok import ngrok
-public_url = ngrok.connect(7860)
-print(f"Public URL: {public_url}")
-```
+## 📊 Performance Optimization
 
-## 📋 Demo Day Checklist
+### Caching Strategy
+- Redis for session state
+- In-memory cache for embeddings
+- API response caching (30min TTL)
 
-- [ ] All API keys in `.env`
+### Latency Targets
+- Voice recognition: <300ms
+- LLM response: <500ms
+- Total round-trip: <1s
+
+### Scaling Considerations
+- Use GPU instances for embeddings
+- Implement connection pooling
+- Consider edge deployment for voice
+
+## 🎯 Demo Checklist
+
+- [ ] All API keys configured
 - [ ] LiveKit agent deployed
-- [ ] Gradio public URL working
-- [ ] Mobile app on your phone
-- [ ] Test audio file ready
-- [ ] Backup responses prepared
-- [ ] Phone hotspot ready (backup internet)
-- [ ] Screen recording software ready
+- [ ] Gradio interface accessible
+- [ ] Mobile app tested
+- [ ] Sample queries prepared
+- [ ] Backup demo video ready
+- [ ] Hotspot for backup internet
 
-## 🎯 Quick Commands Reference
+## 📚 Additional Resources
 
-```bash
-# Deploy everything
-./demo.sh
+- [LiveKit Documentation](https://docs.livekit.io/)
+- [LangGraph Tutorial](https://python.langchain.com/docs/langgraph)
+- [OpenAI API Reference](https://platform.openai.com/docs)
+- [FAISS Documentation](https://github.com/facebookresearch/faiss)
 
-# Just the web app
-python web-app/gradio_demo.py --share
+## 🤝 Contributing
 
-# Just the mobile app
-cd mobile-app/react-native && expo start --tunnel
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-# Just the backend
-lk cloud agent deploy
+## 📄 License
 
-# Monitor logs
-lk cloud logs -f
+MIT License - see LICENSE file for details
 
-# Emergency restart
-pkill -f python
-lk cloud agent stop
-./demo.sh
-```
+---
 
-## 💡 Pro Tips
-
-1. **Test with a friend**: Have someone else try the mobile app
-2. **Record everything**: Use OBS to record working demos
-3. **Prepare offline mode**: Have cached responses ready
-4. **Multiple devices**: Test on iOS and Android
-5. **Backup plan**: If LiveKit fails, show Gradio only
-
-## 🆘 Emergency Contacts
-
-- LiveKit Discord: https://livekit.io/discord
-- OpenAI Status: https://status.openai.com
-- Anthropic Status: https://status.anthropic.com
-
-Good luck with your demo! Remember: Working > Perfect 🚀
+**Remember**: Working demo > Perfect code! Focus on core functionality first, optimize later. 🚀
