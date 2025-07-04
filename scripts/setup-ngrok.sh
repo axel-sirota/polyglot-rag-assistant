@@ -43,7 +43,7 @@ echo -e "${GREEN}Starting ngrok tunnel for Gradio (port 7860)...${NC}"
 echo ""
 
 # Run ngrok
-ngrok http 7860
+ngrok http --url=inviting-hedgehog-charming.ngrok-free.app 7860
 
 # Note: ngrok will take over the terminal, so this won't execute until ngrok stops
 echo -e "${YELLOW}Ngrok stopped.${NC}"

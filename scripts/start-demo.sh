@@ -60,15 +60,24 @@ sleep 5
 # 4. Handle ngrok tunnel
 echo -e "${GREEN}4. Checking ngrok status...${NC}"
 
-# Check if ngrok is already running
-EXISTING_NGROK=$(curl -s localhost:4040/api/tunnels 2>/dev/null | python3 -c "import sys, json; data=json.load(sys.stdin); print(data['tunnels'][0]['public_url'] if 'tunnels' in data and data['tunnels'] else '')" 2>/dev/null || echo "")
+# Check if ngrok is already running and get details
+NGROK_INFO=$(curl -s localhost:4040/api/tunnels 2>/dev/null || echo "{}")
+EXISTING_NGROK=$(echo "$NGROK_INFO" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data['tunnels'][0]['public_url'] if 'tunnels' in data and data['tunnels'] else '')" 2>/dev/null || echo "")
+NGROK_PORT=$(echo "$NGROK_INFO" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data['tunnels'][0]['config']['addr'].split(':')[-1] if 'tunnels' in data and data['tunnels'] else '')" 2>/dev/null || echo "")
 
 if [ ! -z "$EXISTING_NGROK" ]; then
-    echo -e "${YELLOW}Ngrok is already running at: ${EXISTING_NGROK}${NC}"
-    echo -e "${YELLOW}Currently forwarding to port 80. To use with Gradio:${NC}"
-    echo -e "${YELLOW}1. Stop ngrok (Ctrl+C in ngrok terminal)${NC}"
-    echo -e "${YELLOW}2. Restart with: ngrok http 7860${NC}"
-    NGROK_URL=""
+    if [ "$NGROK_PORT" = "7860" ]; then
+        echo -e "${GREEN}✅ Ngrok is already running and correctly configured!${NC}"
+        echo -e "${GREEN}   URL: ${EXISTING_NGROK}${NC}"
+        NGROK_URL="$EXISTING_NGROK"
+    else
+        echo -e "${YELLOW}⚠️  Ngrok is running but forwarding to port ${NGROK_PORT}${NC}"
+        echo -e "${YELLOW}   Current URL: ${EXISTING_NGROK}${NC}"
+        echo -e "${YELLOW}   To use with Gradio (port 7860):${NC}"
+        echo -e "${YELLOW}   1. Stop ngrok (Ctrl+C in ngrok terminal)${NC}"
+        echo -e "${YELLOW}   2. Run: ./scripts/setup-ngrok.sh${NC}"
+        NGROK_URL=""
+    fi
 else
     # Check if ngrok is installed
     if command -v ngrok &> /dev/null; then
@@ -113,11 +122,8 @@ echo ""
 echo "📱 To test on phone:"
 echo "  - Use the Gradio share link (easiest)"
 echo "  - Or connect to same WiFi and use http://${LOCAL_IP}:7860"
-if [ ! -z "$EXISTING_NGROK" ]; then
-    echo ""
-    echo "⚠️  Ngrok Setup:"
-    echo "  Your ngrok is forwarding to port 80, but Gradio runs on 7860"
-    echo "  To fix: Stop ngrok and run: ngrok http 7860"
+if [ ! -z "$NGROK_URL" ]; then
+    echo "  - Or use your ngrok URL: ${NGROK_URL}"
 fi
 echo ""
 echo "Press Ctrl+C to stop all services"
