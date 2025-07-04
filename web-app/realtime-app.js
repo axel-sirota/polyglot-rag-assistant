@@ -309,11 +309,22 @@ class RealtimeVoiceAssistant {
                 if (this.interruptionManager) {
                     this.interruptionManager.handleInterruption(data.item_id);
                 }
+                // Clear the entire audio queue
                 this.audioQueue = [];
                 this.isPlaying = false;
+                // Stop current audio immediately
                 if (this.currentSource) {
-                    this.currentSource.stop();
+                    try {
+                        this.currentSource.stop();
+                    } catch (e) {
+                        // Already stopped
+                    }
                     this.currentSource = null;
+                }
+                // Cancel any pending audio playback
+                if (this.audioPlaybackTimer) {
+                    clearTimeout(this.audioPlaybackTimer);
+                    this.audioPlaybackTimer = null;
                 }
                 break;
                 
@@ -379,8 +390,16 @@ class RealtimeVoiceAssistant {
         if (this.interruptionManager && audioChunk.responseId && 
             !this.interruptionManager.shouldPlayAudioChunk(audioChunk.responseId)) {
             console.log(`Skipping playback of interrupted audio: ${audioChunk.responseId}`);
-            // Continue with next chunk
-            this.playAudioQueue();
+            // Clear remaining chunks from the same response
+            this.audioQueue = this.audioQueue.filter(chunk => 
+                chunk.responseId !== audioChunk.responseId
+            );
+            // Continue with next chunk if available
+            if (this.audioQueue.length > 0) {
+                this.playAudioQueue();
+            } else {
+                this.isPlaying = false;
+            }
             return;
         }
         
@@ -423,8 +442,16 @@ class RealtimeVoiceAssistant {
                     const samplesPlayed = audioBuffer.length;
                     this.interruptionManager.updatePlaybackProgress(samplesPlayed);
                 }
-                // Play next chunk in queue
-                this.playAudioQueue();
+                // Check if we should continue playing
+                if (!this.interruptionManager || !this.interruptionManager.isUserSpeaking) {
+                    // Play next chunk in queue with a small delay
+                    this.audioPlaybackTimer = setTimeout(() => {
+                        this.playAudioQueue();
+                    }, 10);
+                } else {
+                    this.isPlaying = false;
+                    console.log('User is speaking, stopping audio playback');
+                }
             };
             
             source.start();
