@@ -59,8 +59,8 @@ class PolyglotRAGOrchestrator:
         try:
             sample_docs = self.vector_store.add_sample_travel_data()
             
-            # Generate embeddings for sample documents
-            asyncio.create_task(self._embed_sample_docs(sample_docs))
+            # Note: Embeddings will be generated on first use
+            logger.info(f"Prepared {len(sample_docs) if sample_docs else 0} sample documents")
             
         except Exception as e:
             logger.error(f"Error initializing sample data: {e}")

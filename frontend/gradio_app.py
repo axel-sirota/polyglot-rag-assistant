@@ -195,7 +195,8 @@ class PolyglotRAGInterface:
                     chatbot = gr.Chatbot(
                         height=400,
                         elem_id="chatbot",
-                        avatar_images=(None, "🤖")
+                        avatar_images=(None, "🤖"),
+                        type="tuples"
                     )
                     
                     with gr.Row():
