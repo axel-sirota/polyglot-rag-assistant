@@ -11,9 +11,12 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from main import PolyglotRAGOrchestrator
+from utils.logging_config import setup_logging, configure_root_logger, suppress_noisy_loggers
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure logging
+configure_root_logger()
+suppress_noisy_loggers()
+logger = setup_logging('gradio_app')
 
 load_dotenv()
 
@@ -76,12 +79,31 @@ class PolyglotRAGInterface:
             await self.initialize()
             
             # Process audio through orchestrator
-            # For demo purposes, we'll simulate the voice processing
-            # In production, this would go through LiveKit
+            # Convert audio to text using OpenAI Whisper
+            import openai
+            import io
+            import soundfile as sf
             
-            # Simulate voice-to-text (in production, this would be done by LiveKit)
-            # For now, we'll use a placeholder
-            user_message = "Find me flights from New York to London next Tuesday"
+            client = openai.OpenAI()
+            
+            # Convert numpy array to audio file
+            sample_rate = 16000  # Gradio default
+            audio_buffer = io.BytesIO()
+            sf.write(audio_buffer, audio_data, sample_rate, format='WAV')
+            audio_buffer.seek(0)
+            audio_buffer.name = "audio.wav"
+            
+            # Transcribe with Whisper
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_buffer,
+                response_format="verbose_json"
+            )
+            
+            user_message = transcript.text
+            detected_language = transcript.language
+            
+            logger.info(f"Transcribed: {user_message} (language: {detected_language})")
             
             # Process the query
             response = await self.orchestrator.process_text_query(
@@ -97,12 +119,28 @@ class PolyglotRAGInterface:
             if hasattr(self.orchestrator, 'last_flight_results'):
                 flight_results = self.orchestrator.last_flight_results
             
-            return new_history, self.orchestrator.current_language, flight_results
+            # Generate audio response
+            audio_response = None
+            try:
+                tts_response = client.audio.speech.create(
+                    model="tts-1",
+                    voice="alloy",
+                    input=response
+                )
+                # Convert to numpy array for Gradio
+                audio_data = np.frombuffer(tts_response.content, dtype=np.int16)
+                audio_response = (24000, audio_data)  # Sample rate and data
+            except Exception as e:
+                logger.error(f"Error generating audio response: {e}")
+            
+            return new_history, self.orchestrator.current_language, flight_results, audio_response
             
         except Exception as e:
             logger.error(f"Error processing audio: {e}")
+            import traceback
+            traceback.print_exc()
             error_msg = "Sorry, I encountered an error processing your request."
-            return chat_history + [("Audio input", error_msg)], detected_language, None
+            return chat_history + [("Audio input", error_msg)], detected_language, None, None
     
     async def process_text_input(
         self,
@@ -214,7 +252,9 @@ class PolyglotRAGInterface:
                         audio_input = gr.Audio(
                             sources=["microphone"],
                             type="numpy",
-                            label="🎤 Click to speak (or use push-to-talk)"
+                            label="🎤 Click to speak (or use push-to-talk)",
+                            streaming=False,  # Get complete audio
+                            format="wav"
                         )
                 
                 with gr.Column(scale=1):
@@ -229,6 +269,13 @@ class PolyglotRAGInterface:
                     flight_results_display = gr.Markdown(
                         value="*No flight search performed yet*",
                         elem_id="flight-results"
+                    )
+                    
+                    gr.Markdown("### 🔊 Audio Response")
+                    audio_output = gr.Audio(
+                        label="Response Audio",
+                        type="numpy",
+                        autoplay=True
                     )
                     
                     with gr.Accordion("📋 Example Queries", open=False):
@@ -272,17 +319,17 @@ class PolyglotRAGInterface:
             
             async def handle_audio_input(audio, history, lang):
                 if audio is None:
-                    return history, lang, None, "*No flights to display*"
+                    return history, lang, None, "*No flights to display*", None
                 
                 result = await self.process_audio_stream(audio, history, lang)
-                history, new_lang, flights = result
+                history, new_lang, flights, audio_response = result
                 
                 # Format flight results for display
                 flight_display = "*No flights to display*"
                 if flights:
                     flight_display = self.format_flight_results(flights)
                 
-                return history, new_lang, flights, flight_display
+                return history, new_lang, flights, flight_display, audio_response
             
             # Wire up events
             text_input.submit(
@@ -300,7 +347,7 @@ class PolyglotRAGInterface:
             audio_input.change(
                 handle_audio_input,
                 inputs=[audio_input, chatbot, detected_language],
-                outputs=[chatbot, detected_language, flight_results_json, flight_results_display]
+                outputs=[chatbot, detected_language, flight_results_json, flight_results_display, audio_output]
             )
             
             # Add footer

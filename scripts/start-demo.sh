@@ -40,19 +40,26 @@ fi
 # Start services in background
 echo -e "${GREEN}Starting services...${NC}"
 
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
 # 1. Start MCP server (if available)
 echo "1. Starting MCP Flight Search Server..."
-(.venv/bin/python3 mcp_servers/flight_search_server.py 2>/dev/null &)
+(.venv/bin/python3 mcp_servers/flight_search_server.py &)
+MCP_PID=$!
 
 # 2. Start main orchestrator
 echo "2. Starting Main Orchestrator..."
-(.venv/bin/python3 main.py > logs/orchestrator.log 2>&1 &)
+(.venv/bin/python3 main.py &)
+ORCHESTRATOR_PID=$!
 
 # 3. Start Gradio interface
 echo "3. Starting Gradio Web Interface..."
 echo -e "${YELLOW}Gradio will create a public URL for testing${NC}"
 .venv/bin/python3 frontend/gradio_app.py &
 GRADIO_PID=$!
+
+echo -e "${GREEN}All services started. Check logs/ directory for detailed logs${NC}"
 
 # Wait for Gradio to start
 sleep 5
@@ -132,13 +139,20 @@ echo "================================"
 # Function to cleanup on exit
 cleanup() {
     echo -e "\n${YELLOW}Shutting down services...${NC}"
-    pkill -f "python.*gradio_app.py"
-    pkill -f "python.*main.py"
-    pkill -f "python.*flight_search_server.py"
-    if [ ! -z "$NGROK_PID" ]; then
-        kill $NGROK_PID 2>/dev/null
-    fi
+    
+    # Kill specific PIDs if available
+    [ ! -z "$GRADIO_PID" ] && kill $GRADIO_PID 2>/dev/null
+    [ ! -z "$ORCHESTRATOR_PID" ] && kill $ORCHESTRATOR_PID 2>/dev/null
+    [ ! -z "$MCP_PID" ] && kill $MCP_PID 2>/dev/null
+    [ ! -z "$NGROK_PID" ] && kill $NGROK_PID 2>/dev/null
+    
+    # Also kill by name as backup
+    pkill -f "python.*gradio_app.py" 2>/dev/null
+    pkill -f "python.*main.py" 2>/dev/null
+    pkill -f "python.*flight_search_server.py" 2>/dev/null
+    
     echo -e "${GREEN}Demo stopped.${NC}"
+    echo -e "${BLUE}Check logs/ directory for session logs${NC}"
     exit 0
 }
 
