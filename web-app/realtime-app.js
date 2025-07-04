@@ -122,14 +122,19 @@ class RealtimeVoiceAssistant {
     }
     
     async startAudioCapture() {
-        // Request microphone with specific constraints
+        // Request microphone with enhanced echo cancellation
         this.mediaStream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 channelCount: 1,
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                sampleRate: this.sampleRate
+                echoCancellation: { ideal: true },
+                noiseSuppression: { ideal: true },
+                autoGainControl: { ideal: true },
+                sampleRate: { ideal: this.sampleRate },
+                // Additional constraints for better echo handling
+                googEchoCancellation: { exact: true },
+                googAutoGainControl: { exact: true },
+                googNoiseSuppression: { exact: true },
+                googHighpassFilter: { exact: true }
             }
         });
         
@@ -138,8 +143,9 @@ class RealtimeVoiceAssistant {
             sampleRate: this.sampleRate
         });
         
-        // Create gain node for audio ducking
+        // Create gain node for audio ducking and echo reduction
         this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.value = 0.7; // Reduce volume to minimize echo
         this.gainNode.connect(this.audioContext.destination);
         
         // Initialize interruption manager with audio context
@@ -294,6 +300,34 @@ class RealtimeVoiceAssistant {
                 // Notify interruption manager
                 if (this.interruptionManager) {
                     this.interruptionManager.handleResponseComplete(completeId);
+                }
+                break;
+                
+            case 'interrupted':
+                console.log('Assistant was interrupted');
+                // Clear audio queue and stop playback
+                if (this.interruptionManager) {
+                    this.interruptionManager.handleInterruption(data.item_id);
+                }
+                this.audioQueue = [];
+                this.isPlaying = false;
+                if (this.currentSource) {
+                    this.currentSource.stop();
+                    this.currentSource = null;
+                }
+                break;
+                
+            case 'user_speech_started':
+                // User started speaking - prepare for interruption
+                if (this.interruptionManager) {
+                    this.interruptionManager.handleSpeechStarted({});
+                }
+                break;
+                
+            case 'user_speech_stopped':
+                // User stopped speaking
+                if (this.interruptionManager) {
+                    this.interruptionManager.handleSpeechEnded();
                 }
                 break;
                 

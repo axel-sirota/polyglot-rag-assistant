@@ -37,10 +37,18 @@ async def main():
     # Find all test files
     test_dir = Path(__file__).parent
     test_files = [
+        # Core API tests
+        test_dir / "test_amadeus_sdk.py",
+        test_dir / "test_aviationstack.py", 
+        test_dir / "test_browserless.py",
+        # Integration tests
         test_dir / "test_apis.py",
         test_dir / "test_voice_pipeline.py",
         test_dir / "test_flight_search.py",
-        test_dir / "test_gradio_interface.py"
+        test_dir / "test_gradio_interface.py",
+        # Additional tests
+        test_dir / "test_realtime_connection.py",
+        test_dir / "test_interruption.py"
     ]
     
     # Run tests

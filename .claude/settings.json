@@ -1,0 +1,41 @@
+{
+  "auto_approve_patterns": {
+    "bash": [
+      "pkill -f \"python.*api_server.py\" || true",
+      "pkill -f \"python.*http.server\" || true",
+      "pkill -f \"python.*api_server.py\" || true && pkill -f \"python.*http.server\" || true",
+      ".venv/bin/python3 api_server.py > api_server.log 2>&1 &",
+      "cd web-app && python3 -m http.server 3000 > ../web_server.log 2>&1 &",
+      "sleep * && curl -s http://localhost:8000/health*",
+      "sleep * && curl -s -I http://localhost:3000*",
+      "lsof -i :8000 | grep LISTEN",
+      "lsof -i :3000 | grep LISTEN",
+      "kill *",
+      "tail -f api_server.log",
+      "tail -f web_server.log",
+      "tail -f logs/*",
+      "ls -la logs/",
+      "mkdir -p logs/*",
+      "curl -s http://localhost:8000/*",
+      "curl -X POST http://localhost:8000/*",
+      ".venv/bin/python3 test_*.py",
+      "cat *.log | grep *",
+      "find . -name \"*.log\"*",
+      "ps aux | grep python"
+    ]
+  },
+  "auto_approve_commands": [
+    "sleep",
+    "curl",
+    "pkill",
+    "kill",
+    "lsof",
+    "tail",
+    "ls",
+    "mkdir",
+    "cat",
+    "grep",
+    "find",
+    "ps"
+  ]
+}

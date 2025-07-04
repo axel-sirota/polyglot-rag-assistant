@@ -17,7 +17,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.logging_config import setup_logging
 from .real_flight_search import get_real_flights
-from .amadeus_flight_search import AmadeusFlightSearch
+from .amadeus_sdk_flight_search import AmadeusSDKFlightSearch
 
 # Set up logging
 from utils.session_logging import setup_session_logging
@@ -42,14 +42,15 @@ class FlightSearchServer:
         self.serpapi_key = os.getenv("SERPAPI_API_KEY")
         self.aviationstack_key = os.getenv("AVIATIONSTACK_API_KEY")
         self.http_client = httpx.AsyncClient()
-        # Initialize Amadeus API
-        self.amadeus_search = AmadeusFlightSearch()
+        # Initialize Amadeus SDK
+        self.amadeus_search = AmadeusSDKFlightSearch()
         
         # Multilingual city name mappings (normalize to English)
         self.multilingual_cities = {
             # Spanish
             "nueva york": "new york",
-            "nueva jersey": "new jersey", 
+            "nueva jersey": "new jersey",
+            "nuevo york": "new york", 
             "san francisco": "san francisco",
             "los ángeles": "los angeles",
             "los angeles": "los angeles",

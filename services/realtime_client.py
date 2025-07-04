@@ -38,18 +38,34 @@ class RealtimeClient:
                 "create_response": True  # Automatically create response when VAD detects end
             },
             "input_audio_transcription": {
-                "model": "whisper-1"  # Enable real-time transcription, auto-detect language
+                "model": "whisper-1",  # Enable real-time transcription
+                # Don't specify language to allow auto-detection of any language
+                # The model will detect Spanish, French, Chinese, etc. automatically
             },
             "tools": REALTIME_FUNCTIONS,
             "tool_choice": "auto",
             "temperature": 0.8,
-            "instructions": """You are a multilingual flight search assistant.
-            IMPORTANT: Always detect and respond in the SAME language the user is speaking.
-            If the user speaks English, respond in English.
-            If the user speaks Spanish, respond in Spanish.
-            If the user speaks any other language, respond in that language.
-            Help users find flights using the search_flights function.
-            Be conversational and helpful."""
+            "instructions": """You are a flight search assistant that helps users find flights.
+            
+            IMPORTANT: 
+            1. Users may speak in ANY language (Spanish, French, Chinese, etc.)
+            2. You should UNDERSTAND their request regardless of language
+            3. Always RESPOND in the SAME language the user spoke
+            4. Internally, translate city names to English for the flight search function
+            
+            For example:
+            - If user says "Buscar vuelos de Nueva York a París", understand this as a search from New York to Paris
+            - If user says "Je veux aller de Paris à Londres", understand this as Paris to London
+            - But ALWAYS respond back in their original language
+            
+            Use the search_flights function with English city names/codes.
+            Be conversational and helpful.
+            
+            IMPORTANT: If a user asks for a specific airline (like American Airlines) and you don't find it:
+            - Acknowledge that you couldn't find that specific airline
+            - Mention that the flight data might be limited
+            - Suggest checking directly with the airline's website
+            - Still show alternative options available"""
         }
         
         # Callbacks for handling events
@@ -219,6 +235,21 @@ class RealtimeClient:
                         "name": event["name"],
                         "arguments": json.loads(event["arguments"])
                     }
+                
+                elif event_type == "conversation.interrupted":
+                    # User interrupted the assistant
+                    logger.info("Conversation interrupted by user")
+                    yield {"type": "interrupted", "item_id": event.get("item_id")}
+                
+                elif event_type == "input_audio_buffer.speech_started":
+                    # User started speaking
+                    logger.debug("User speech started")
+                    yield {"type": "user_speech_started"}
+                
+                elif event_type == "input_audio_buffer.speech_stopped":
+                    # User stopped speaking
+                    logger.debug("User speech stopped")
+                    yield {"type": "user_speech_stopped"}
                 
                 elif event_type == "error":
                     # Error occurred
