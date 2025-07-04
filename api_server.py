@@ -21,11 +21,13 @@ from utils.session_logging import setup_session_logging
 logger = setup_session_logging('api_server')
 
 # FastAPI imports
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uvicorn
+import time
+import jwt
 
 # Import our services
 from services.voice_processor import VoiceProcessor
@@ -379,6 +381,77 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "version": "2.0.0"
     }
+
+@app.post("/api/livekit/token")
+async def get_livekit_token(request: Request):
+    """Generate a LiveKit access token"""
+    try:
+        data = await request.json()
+        identity = data.get("identity", f"user-{int(time.time())}")
+        room_name = data.get("room", "flight-assistant")
+        
+        # Get LiveKit credentials from environment
+        api_key = os.getenv("LIVEKIT_API_KEY")
+        api_secret = os.getenv("LIVEKIT_API_SECRET")
+        
+        if not api_key or not api_secret:
+            raise HTTPException(status_code=500, detail="LiveKit credentials not configured")
+        
+        # Create access token
+        token_data = {
+            "exp": int(time.time()) + 86400,  # 24 hours
+            "iss": api_key,
+            "sub": identity,
+            "video": {
+                "room": room_name,
+                "roomJoin": True,
+                "canPublish": True,
+                "canSubscribe": True,
+                "canPublishData": True
+            }
+        }
+        
+        token = jwt.encode(token_data, api_secret, algorithm="HS256")
+        
+        return {
+            "token": token,
+            "identity": identity,
+            "room": room_name
+        }
+        
+    except Exception as e:
+        logger.error(f"Token generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/flights")
+async def api_search_flights(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: Optional[str] = None,
+    passengers: int = 1,
+    cabin_class: str = "economy",
+    currency: str = "USD"
+):
+    """API endpoint for flight search - used by LiveKit agent"""
+    try:
+        flights = await flight_service.search_flights(
+            origin=origin,
+            destination=destination,
+            departure_date=departure_date,
+            return_date=return_date,
+            passengers=passengers,
+            cabin_class=cabin_class,
+            currency=currency
+        )
+        return {
+            "success": True,
+            "flights": flights,
+            "count": len(flights)
+        }
+    except Exception as e:
+        logger.error(f"Flight search error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Error handlers
 @app.exception_handler(404)
