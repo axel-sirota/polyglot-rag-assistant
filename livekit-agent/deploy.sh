@@ -9,45 +9,53 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}🚀 Deploying Polyglot Flight Assistant to LiveKit Cloud${NC}"
 
-# Check for LiveKit CLI
-if ! command -v lk &> /dev/null; then
-    echo -e "${RED}❌ LiveKit CLI not found!${NC}"
-    echo "Install it with: curl -sSL https://get.livekit.io/cli | bash"
+# Change to agent directory
+cd "$(dirname "$0")"
+
+# Load environment variables
+if [ -f "../.env" ]; then
+    export $(cat ../.env | grep -v '^#' | xargs)
+else
+    echo -e "${RED}❌ No .env file found!${NC}"
     exit 1
 fi
 
-# Check for required environment variables
-if [ -z "$LIVEKIT_API_KEY" ] || [ -z "$LIVEKIT_API_SECRET" ]; then
-    echo -e "${RED}❌ Missing LiveKit credentials!${NC}"
-    echo "Please set LIVEKIT_API_KEY and LIVEKIT_API_SECRET in your .env file"
+# Check for project
+if [ -z "$LIVEKIT_PROJECT" ]; then
+    echo -e "${RED}❌ LIVEKIT_PROJECT not set in .env${NC}"
+    echo "Add to your .env file: LIVEKIT_PROJECT=your-project-name"
+    echo ""
+    echo "To find your project name, run: lk project list"
     exit 1
 fi
 
-# Install dependencies
-echo -e "${YELLOW}📦 Installing dependencies...${NC}"
-pip install -r requirements.txt
 
 # Deploy to LiveKit Cloud
 echo -e "${YELLOW}☁️  Deploying to LiveKit Cloud...${NC}"
-lk cloud agent deploy \
-    --name "polyglot-flight-assistant" \
-    --entry-point "agent.py" \
-    --requirements "requirements.txt" \
-    --env-file "../.env" \
-    --instance-type "small" \
-    --min-idle 1 \
-    --max-idle 3 \
-    --region "us-east-1"
+echo "Project: $LIVEKIT_PROJECT"
+echo ""
+
+# Deploy from current directory with secrets
+lk agent deploy \
+    --project "$LIVEKIT_PROJECT" \
+    --secrets-file "../.env" \
+    .
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Deployment successful!${NC}"
     echo -e "${GREEN}🎉 Your agent is now running on LiveKit Cloud${NC}"
     echo ""
     echo -e "${YELLOW}Next steps:${NC}"
-    echo "1. Open web-app/livekit-client.html in your browser"
-    echo "2. Click 'Connect' to start talking to your assistant"
-    echo "3. Speak in any language to search for flights!"
+    echo "1. Check status: lk agent list --project $LIVEKIT_PROJECT"
+    echo "2. View logs: lk logs --project $LIVEKIT_PROJECT --follow"
+    echo "3. Open web-app/livekit-client.html in your browser"
+    echo "4. Click 'Connect' to start talking to your assistant"
 else
     echo -e "${RED}❌ Deployment failed!${NC}"
+    echo ""
+    echo "Common fixes:"
+    echo "1. Run: lk cloud auth"
+    echo "2. Check project name: lk project list"
+    echo "3. Add to .env: LIVEKIT_PROJECT=your-project-name"
     exit 1
 fi

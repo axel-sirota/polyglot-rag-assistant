@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Agent
+metadata:
+  name: polyglot-flight-assistant
+spec:
+  runtime: python3.11
+  entrypoint: agent.py
+  dependencies:
+    - requirements.txt
+  env:
+    LOG_LEVEL: info
+    API_SERVER_URL: http://localhost:8000
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"

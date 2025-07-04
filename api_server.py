@@ -27,7 +27,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uvicorn
 import time
-import jwt
+from livekit import api
 
 # Import our services
 from services.voice_processor import VoiceProcessor
@@ -384,11 +384,12 @@ async def health_check():
 
 @app.post("/api/livekit/token")
 async def get_livekit_token(request: Request):
-    """Generate a LiveKit access token"""
+    """Generate a LiveKit access token using SDK"""
     try:
         data = await request.json()
         identity = data.get("identity", f"user-{int(time.time())}")
         room_name = data.get("room", "flight-assistant")
+        name = data.get("name", identity)
         
         # Get LiveKit credentials from environment
         api_key = os.getenv("LIVEKIT_API_KEY")
@@ -397,26 +398,29 @@ async def get_livekit_token(request: Request):
         if not api_key or not api_secret:
             raise HTTPException(status_code=500, detail="LiveKit credentials not configured")
         
-        # Create access token
-        token_data = {
-            "exp": int(time.time()) + 86400,  # 24 hours
-            "iss": api_key,
-            "sub": identity,
-            "video": {
-                "room": room_name,
-                "roomJoin": True,
-                "canPublish": True,
-                "canSubscribe": True,
-                "canPublishData": True
-            }
-        }
-        
-        token = jwt.encode(token_data, api_secret, algorithm="HS256")
+        # Create access token using LiveKit SDK
+        token = api.AccessToken(
+            api_key=api_key,
+            api_secret=api_secret
+        ).with_identity(
+            identity
+        ).with_name(
+            name
+        ).with_grants(
+            api.VideoGrants(
+                room_join=True,
+                room=room_name,
+                can_publish=True,
+                can_subscribe=True,
+                can_publish_data=True
+            )
+        ).to_jwt()
         
         return {
             "token": token,
             "identity": identity,
-            "room": room_name
+            "room": room_name,
+            "name": name
         }
         
     except Exception as e:

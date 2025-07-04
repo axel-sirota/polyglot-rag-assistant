@@ -1,0 +1,26 @@
+# LiveKit Agent Configuration
+# This file defines how the agent runs on LiveKit Cloud
+
+# Agent settings
+[agent]
+entrypoint = "realtime_agent.py"
+min_replicas = 1
+max_replicas = 3
+
+# Python environment
+[python]
+version = "3.11"
+requirements = "requirements.txt"
+
+# Environment variables (non-secret)
+[env]
+API_SERVER_URL = "https://polyglot-api.yourdomain.com"  # Update this to your deployed API URL
+
+# Resource limits
+[resources]
+cpu = "0.5"
+memory = "512Mi"
+
+# Logging
+[logging]
+level = "info"

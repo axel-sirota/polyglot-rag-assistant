@@ -390,3 +390,65 @@ Rationale:
 4. Verify flight search still works
 
 LiveKit solves our interruption issues while keeping all existing functionality intact.
+
+## Complete Fix Implementation (2025-07-04 - Based on Research)
+
+### Issues Resolved:
+
+1. **LiveKit CLI Deployment Error** ("project does not match agent subdomain []"):
+   - Root cause: Using deprecated `lk agent create` command
+   - Solution: Use `lk app create --template` approach
+   - Alternative: Deploy via LiveKit Cloud dashboard
+
+2. **OpenAI Realtime API Syntax**:
+   - Fixed: Now using `openai.realtime.RealtimeModel` (not `openai.LLM.with_realtime`)
+   - Updated to new `AgentSession` pattern (not deprecated `VoiceAssistant`)
+
+3. **Architecture Validated**:
+   - Confirmed: Agent → API Server → Amadeus is the correct pattern
+   - Benefits: Better scalability, security, and maintenance
+
+### Files Updated:
+
+1. **`livekit-agent/agent.py`** - Complete rewrite with:
+   - New `AgentSession` pattern for 2025
+   - Correct OpenAI Realtime API syntax
+   - `@function_tool` decorator for flight search
+   - Proper multilingual support
+
+2. **`api_server.py`** - Updated token generation:
+   - Now uses LiveKit SDK: `api.AccessToken()`
+   - Proper JWT structure with VideoGrants
+
+3. **`Dockerfile.api`** - Production-ready container:
+   - Health checks
+   - Non-root user
+   - Proper dependency management
+
+4. **`DEPLOYMENT_GUIDE_2025.md`** - Complete deployment instructions:
+   - ECS deployment for API server
+   - LiveKit agent deployment via template
+   - Troubleshooting guide
+
+### Deployment Steps:
+
+1. **API Server to ECS**:
+   ```bash
+   docker build -f Dockerfile.api -t polyglot-api .
+   # Deploy to ECS with task definition
+   ```
+
+2. **LiveKit Agent**:
+   ```bash
+   lk app create --template voice-pipeline-agent-python polyglot-flight-agent
+   # Copy our agent.py and deploy
+   ```
+
+3. **Alternative**: Use LiveKit Cloud dashboard if CLI fails
+
+### Architecture Confirmation:
+```
+Browser → LiveKit WebRTC → Agent → API Server (ECS) → Amadeus SDK
+```
+
+All components are properly integrated and deployment issues are resolved!
