@@ -13,13 +13,14 @@ class RealtimeVoiceAssistant {
         this.audioQueue = [];
         this.isPlaying = false;
         
-        // Audio interruption handling
+        // Managers
+        this.interruptionManager = null;
+        this.conversationManager = null;
+        this.feedbackManager = null;
+        
+        // Audio handling
         this.currentSource = null;
         this.gainNode = null;
-        this.isUserSpeaking = false;
-        this.lastUserSpeechTime = 0;
-        this.currentResponseId = null;
-        this.interruptedResponses = new Set();
         
         // UI elements
         this.statusEl = document.getElementById('status');
@@ -36,11 +37,31 @@ class RealtimeVoiceAssistant {
     setupEventHandlers() {
         this.startBtn?.addEventListener('click', () => this.start());
         this.stopBtn?.addEventListener('click', () => this.stop());
+        
+        // Listen for assistant state changes from interruption manager
+        window.addEventListener('assistantStateChange', (event) => {
+            const state = event.detail.state;
+            console.log(`Assistant state changed to: ${state}`);
+            
+            // Update UI based on state
+            if (state === 'interrupted') {
+                this.updateStatus('Interrupted - listening...');
+            } else if (state === 'speaking') {
+                this.updateStatus('Assistant is speaking...');
+            } else if (state === 'listening') {
+                this.updateStatus('Listening... (Speak naturally)');
+            }
+        });
     }
     
     async start() {
         try {
             this.updateStatus('Connecting...');
+            
+            // Initialize feedback manager
+            this.feedbackManager = new UserFeedbackManager();
+            await this.feedbackManager.initialize();
+            this.feedbackManager.showState('connecting');
             
             // Connect WebSocket first
             await this.connectWebSocket();
@@ -51,16 +72,25 @@ class RealtimeVoiceAssistant {
             this.startBtn.disabled = true;
             this.stopBtn.disabled = false;
             this.updateStatus('Listening... (Speak naturally, no need to hold any button)');
+            this.feedbackManager.showState('listening');
             
         } catch (error) {
             console.error('Failed to start:', error);
             this.updateStatus(`Error: ${error.message}`);
+            if (this.feedbackManager) {
+                this.feedbackManager.showState('error', error.message);
+            }
         }
     }
     
     async connectWebSocket() {
         return new Promise((resolve, reject) => {
             this.ws = new WebSocket('ws://localhost:8000/ws');
+            
+            // Initialize managers
+            this.interruptionManager = new InterruptionManager(this.ws);
+            this.conversationManager = new ConversationManager();
+            this.conversationManager.initialize(this.messagesEl);
             
             this.ws.onopen = () => {
                 console.log('WebSocket connected');
@@ -111,6 +141,11 @@ class RealtimeVoiceAssistant {
         // Create gain node for audio ducking
         this.gainNode = this.audioContext.createGain();
         this.gainNode.connect(this.audioContext.destination);
+        
+        // Initialize interruption manager with audio context
+        if (this.interruptionManager) {
+            await this.interruptionManager.initialize(this.audioContext, this.gainNode);
+        }
         
         // Resume audio context if suspended (required for some browsers)
         if (this.audioContext.state === 'suspended') {
@@ -180,33 +215,54 @@ class RealtimeVoiceAssistant {
             case 'user_transcript_delta':
                 // Show real-time transcription as user speaks
                 this.updateTranscript(data.delta);
-                // User is speaking - duck audio
-                this.handleUserSpeaking();
+                // Notify interruption manager of user speech
+                if (this.interruptionManager) {
+                    await this.interruptionManager.handleSpeechStarted(data);
+                }
                 break;
                 
             case 'user_transcript':
                 // Final user transcript
-                this.addUserMessage(data.text);
+                if (this.conversationManager) {
+                    this.conversationManager.addUserMessage(data.text);
+                } else {
+                    this.addUserMessage(data.text);
+                }
                 this.clearTranscript();
+                // Notify interruption manager that user speech ended
+                if (this.interruptionManager) {
+                    this.interruptionManager.handleSpeechEnded();
+                }
                 break;
                 
             case 'transcript_delta':
                 // Assistant's response transcription
-                this.updateAssistantTranscript(data.delta);
-                // Track response ID
+                if (this.conversationManager) {
+                    await this.conversationManager.handleConversationUpdate({
+                        item: {
+                            id: data.item_id || data.response_id || `assistant-${Date.now()}`,
+                            type: 'message',
+                            role: 'assistant'
+                        },
+                        delta: { text: data.delta }
+                    });
+                } else {
+                    this.updateAssistantTranscript(data.delta);
+                }
+                // Track response ID and notify interruption manager
                 if (data.response_id || data.item_id) {
                     const responseId = data.response_id || data.item_id;
-                    if (responseId !== this.currentResponseId) {
-                        this.currentResponseId = responseId;
-                        console.log(`New response started: ${this.currentResponseId}`);
+                    if (this.interruptionManager) {
+                        this.interruptionManager.setProcessingState(true, responseId);
+                        this.interruptionManager.setCurrentAudioItemId(data.item_id || responseId);
                     }
                 }
                 break;
                 
             case 'audio_delta':
-                // Check if this audio is from an interrupted response
+                // Check if this audio should be played
                 const responseId = data.response_id || data.item_id;
-                if (responseId && this.interruptedResponses.has(responseId)) {
+                if (this.interruptionManager && !this.interruptionManager.shouldPlayAudioChunk(responseId)) {
                     console.log(`Discarding audio from interrupted response: ${responseId}`);
                     break;
                 }
@@ -228,8 +284,16 @@ class RealtimeVoiceAssistant {
                 
             case 'response_complete':
                 // Complete response
-                if (data.text) {
+                const completeId = data.response_id || data.item_id;
+                if (this.conversationManager && completeId) {
+                    this.conversationManager.completeItem(completeId);
+                }
+                if (data.text && !this.conversationManager) {
                     this.addAssistantMessage(data.text);
+                }
+                // Notify interruption manager
+                if (this.interruptionManager) {
+                    this.interruptionManager.handleResponseComplete(completeId);
                 }
                 break;
                 
@@ -277,8 +341,9 @@ class RealtimeVoiceAssistant {
         this.isPlaying = true;
         const audioChunk = this.audioQueue.shift();
         
-        // Check if this audio is from an interrupted response
-        if (audioChunk.responseId && this.interruptedResponses.has(audioChunk.responseId)) {
+        // Check if this audio should be played
+        if (this.interruptionManager && audioChunk.responseId && 
+            !this.interruptionManager.shouldPlayAudioChunk(audioChunk.responseId)) {
             console.log(`Skipping playback of interrupted audio: ${audioChunk.responseId}`);
             // Continue with next chunk
             this.playAudioQueue();
@@ -312,9 +377,18 @@ class RealtimeVoiceAssistant {
             
             // Keep reference to current source for interruption
             this.currentSource = source;
+            if (this.interruptionManager) {
+                this.interruptionManager.currentAudioSource = source;
+            }
             
             source.onended = () => {
                 this.currentSource = null;
+                if (this.interruptionManager) {
+                    this.interruptionManager.currentAudioSource = null;
+                    // Update playback progress
+                    const samplesPlayed = audioBuffer.length;
+                    this.interruptionManager.updatePlaybackProgress(samplesPlayed);
+                }
                 // Play next chunk in queue
                 this.playAudioQueue();
             };
@@ -421,71 +495,6 @@ class RealtimeVoiceAssistant {
         }
     }
     
-    handleUserSpeaking() {
-        this.isUserSpeaking = true;
-        this.lastUserSpeechTime = Date.now();
-        
-        // Duck assistant audio to 20% when user speaks
-        if (this.gainNode) {
-            this.gainNode.gain.setTargetAtTime(0.2, this.audioContext.currentTime, 0.1);
-        }
-        
-        // Mark current response as interrupted
-        if (this.currentResponseId) {
-            console.log(`Marking response ${this.currentResponseId} as interrupted`);
-            this.interruptedResponses.add(this.currentResponseId);
-        }
-        
-        // Send interrupt signal to server
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({
-                type: 'interrupt'
-            }));
-        }
-        
-        // Clear audio queue to stop queued responses
-        if (this.audioQueue.length > 0) {
-            console.log(`Clearing ${this.audioQueue.length} audio chunks due to interruption`);
-            // Mark all queued audio response IDs as interrupted
-            this.audioQueue.forEach(chunk => {
-                if (chunk.responseId) {
-                    this.interruptedResponses.add(chunk.responseId);
-                }
-            });
-            this.audioQueue = [];
-        }
-        
-        // Stop current audio playback
-        if (this.currentSource) {
-            try {
-                this.currentSource.stop();
-                this.currentSource = null;
-            } catch (e) {
-                // Already stopped
-            }
-        }
-        
-        // Schedule restoration of audio level
-        setTimeout(() => {
-            if (Date.now() - this.lastUserSpeechTime > 500) {
-                this.isUserSpeaking = false;
-                // Restore audio level
-                if (this.gainNode) {
-                    this.gainNode.gain.setTargetAtTime(1.0, this.audioContext.currentTime, 0.1);
-                }
-            }
-        }, 600);
-        
-        // Clean up old interrupted responses after 10 seconds
-        setTimeout(() => {
-            if (this.interruptedResponses.size > 10) {
-                // Keep only the most recent 10 interrupted responses
-                const arr = Array.from(this.interruptedResponses);
-                this.interruptedResponses = new Set(arr.slice(-10));
-                console.log(`Cleaned up interrupted responses, keeping ${this.interruptedResponses.size}`);
-            }
-        }, 10000);
-    }
 }
 
 // Initialize when page loads

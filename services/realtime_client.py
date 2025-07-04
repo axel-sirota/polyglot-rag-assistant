@@ -32,9 +32,9 @@ class RealtimeClient:
             "voice": "alloy",
             "turn_detection": {
                 "type": "server_vad",
-                "threshold": 0.3,  # More sensitive to detect speech
-                "prefix_padding_ms": 200,  # Less padding before speech
-                "silence_duration_ms": 400,  # Shorter silence before end detection
+                "threshold": 0.5,  # Balanced sensitivity
+                "prefix_padding_ms": 300,  # Standard padding before speech
+                "silence_duration_ms": 700,  # Longer silence to avoid cutting off user
                 "create_response": True  # Automatically create response when VAD detects end
             },
             "input_audio_transcription": {

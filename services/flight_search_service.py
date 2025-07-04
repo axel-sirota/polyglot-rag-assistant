@@ -17,6 +17,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.logging_config import setup_logging
 from .real_flight_search import get_real_flights
+from .amadeus_flight_search import AmadeusFlightSearch
 
 # Set up logging
 from utils.session_logging import setup_session_logging
@@ -41,6 +42,8 @@ class FlightSearchServer:
         self.serpapi_key = os.getenv("SERPAPI_API_KEY")
         self.aviationstack_key = os.getenv("AVIATIONSTACK_API_KEY")
         self.http_client = httpx.AsyncClient()
+        # Initialize Amadeus API
+        self.amadeus_search = AmadeusFlightSearch()
         
         # Multilingual city name mappings (normalize to English)
         self.multilingual_cities = {
@@ -529,7 +532,7 @@ class FlightSearchServer:
         cabin_class: str = "economy",
         currency: str = "USD"
     ) -> List[Dict[str, Any]]:
-        """Search for flights - AviationStack primary, SerpAPI fallback"""
+        """Search for flights - Amadeus primary, AviationStack secondary, SerpAPI fallback"""
         try:
             # Convert city names to airport codes if needed
             origin_code = await self.get_airport_code(origin)
@@ -537,7 +540,19 @@ class FlightSearchServer:
             
             logger.info(f"Searching flights: {origin_code} -> {dest_code} on {departure_date}")
             
-            # Try AviationStack first (primary API)
+            # Try Amadeus first (most reliable)
+            try:
+                flights = await self.amadeus_search.search_flights(
+                    origin_code, dest_code, departure_date,
+                    return_date, passengers, 0, cabin_class.upper(), currency
+                )
+                if flights:
+                    logger.info(f"Amadeus returned {len(flights)} flights")
+                    return flights
+            except Exception as e:
+                logger.warning(f"Amadeus failed: {e}, trying fallback APIs")
+            
+            # Try AviationStack as secondary option
             if self.aviationstack_key:
                 try:
                     flights = await self._search_flights_aviationstack(
@@ -560,7 +575,7 @@ class FlightSearchServer:
                 except Exception as e:
                     logger.warning(f"SerpAPI also failed: {e}")
             
-            # If both fail or no keys available, return mock data
+            # If all fail or no keys available, return mock data
             logger.info("Using mock flight data")
             return await self._get_mock_flights(
                 origin_code, dest_code, departure_date,
@@ -691,8 +706,13 @@ class FlightSearchServer:
             "limit": 10
         }
         
+        # Use proper endpoint for future flights
+        endpoint = "http://api.aviationstack.com/v1/flightsFuture"
+        if departure_date == datetime.now().strftime("%Y-%m-%d"):
+            endpoint = "http://api.aviationstack.com/v1/flights"
+            
         response = await self.http_client.get(
-            "http://api.aviationstack.com/v1/flights",
+            endpoint,
             params=params
         )
         
