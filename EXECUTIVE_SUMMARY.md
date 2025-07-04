@@ -323,3 +323,97 @@ Audio ↔ GPT-4o Realtime (with function calling) ↔ Audio
 3. **Interruptions**: Can handle natural conversation flow
 4. **Multilingual**: Automatically detects and responds in user's language
 5. **Integrated**: Flight search via function calling
+
+## Session 8: Major Refactoring - OpenAI Realtime API with Fallback (2025-07-04)
+
+### 🚨 Complete Architecture Overhaul
+Refactored entire codebase based on `context/new_plan.md` to remove MCP dependencies and implement OpenAI Realtime API with fallback support.
+
+### ✅ Completed Work
+
+#### Phase 1: Backend Cleanup
+1. **Removed MCP Dependencies**
+   - Deleted `mcp_servers/flight_search_server.py`
+   - Deleted `mcp_servers/mcp_config.json`
+   - Moved `flight_search_api.py` to `services/flight_search_service.py`
+   - Updated all imports to remove MCP references
+   - Removed MCP_SERVER_PORT from .env
+
+2. **Created OpenAI Function Definitions**
+   - Created `services/functions.py` with flight search function schemas
+   - Defined functions for: search_flights, get_airport_code, get_flight_details
+   - Functions are compatible with OpenAI function calling
+
+#### Phase 2: Voice Pipeline Implementation
+1. **OpenAI Realtime API Client**
+   - Created `services/realtime_client.py`
+   - WebSocket connection to OpenAI Realtime API
+   - Streaming audio and text with function calling
+   - Event handling for transcripts, audio, and function calls
+
+2. **Voice Processor with Fallback**
+   - Created `services/voice_processor.py`
+   - Automatic detection of Realtime API availability
+   - Fallback to standard STT→LLM→TTS pipeline
+   - Multilingual support with language detection
+   - Integrated function calling for flight searches
+
+#### Phase 3: Simplified Frontend
+1. **FastAPI Backend**
+   - Created `api/main.py` with WebSocket support
+   - REST endpoints for flight search and audio processing
+   - Real-time WebSocket communication for voice streaming
+   - CORS configured for web access
+
+2. **Web Interface Update**
+   - Updated `web-app/app.js` to use WebSocket instead of LiveKit
+   - Simplified connection logic
+   - Real-time transcript streaming
+   - Maintained multilingual UI elements
+
+#### Phase 4: Dependency Simplification
+- Reduced requirements.txt from 37 to 7 core dependencies
+- Removed: MCP, LiveKit, Anthropic, LangChain, FAISS
+- Kept only essential: OpenAI, FastAPI, WebSockets, HTTPx
+
+### 🏗️ New Architecture
+
+**Before**:
+```
+User → LiveKit → MCP Server → Flight APIs
+         ↓          ↓
+    Anthropic    Complex
+    Claude       Protocol
+```
+
+**After**:
+```
+User → WebSocket → FastAPI → OpenAI Realtime API → Flight APIs
+                      ↓              ↓
+                  Simple API    Function Calling
+```
+
+### 🚀 Key Improvements
+1. **Simpler Architecture**: Removed complex MCP protocol layer
+2. **Better Performance**: Direct WebSocket connection for real-time voice
+3. **Cost Optimization**: Automatic fallback when Realtime API unavailable
+4. **Easier Deployment**: Fewer dependencies and cleaner codebase
+5. **Native Function Calling**: Using OpenAI's built-in function system
+
+### 📋 Remaining Tasks
+1. **Mobile App Setup**: Initialize React Native Expo project
+2. **Flight Service Optimization**: Implement circuit breaker pattern
+3. **Production Deployment**: Configure for cloud deployment
+4. **Testing**: Comprehensive multilingual testing
+
+### 🔧 Quick Start
+```bash
+# Install dependencies
+.venv/bin/python3 -m pip install -r requirements.txt
+
+# Start backend
+.venv/bin/python3 -m uvicorn api.main:app --reload --port 8000
+
+# Start web interface
+cd web-app && python3 -m http.server 3000
+```
