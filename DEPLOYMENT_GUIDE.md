@@ -1,229 +1,277 @@
-# 🚀 Polyglot RAG - Local Testing & Deployment Guide
+# Polyglot RAG Assistant - Complete Deployment Guide
 
-## 📱 Testing on Phone & Web (Local Development)
+## Prerequisites
 
-### Current Setup
-- **Gradio App**: Running on `localhost:7860`
-- **Ngrok**: Already running (forwards to port 80)
+1. **Accounts & CLI Tools**
+   - AWS Account with CLI configured (`aws configure`)
+   - Docker Hub account
+   - LiveKit Cloud account
+   - Terraform installed (v1.0+)
+   - Docker installed
+   - Node.js/npm (for UI if needed)
 
-### Quick Access URLs
-
-1. **Local Computer**:
-   ```
-   http://localhost:7860
-   ```
-
-2. **Phone/Tablet (Same WiFi)**:
+2. **Environment Variables**
    ```bash
-   # Find your local IP:
-   # Mac: ifconfig | grep "inet " | grep -v 127.0.0.1
-   # Then use: http://YOUR_LOCAL_IP:7860
+   # Copy and update .env file
+   cp .env.example .env
+   # Edit with your values:
+   # - DOCKER_USERNAME
+   # - DOCKER_PASSWORD
+   # - LIVEKIT_API_KEY
+   # - LIVEKIT_API_SECRET
+   # - AMADEUS_CLIENT_ID
+   # - AMADEUS_CLIENT_SECRET
+   # - OPENAI_API_KEY
+   # - ANTHROPIC_API_KEY
    ```
 
-3. **Public Access (Gradio Share)**:
-   - When you run the Gradio app with `share=True`, it creates a public URL
-   - Look for: `Running on public URL: https://xxxxx.gradio.live`
-   - This URL works from anywhere!
+## Step 1: Deploy LiveKit Agent
 
-4. **Ngrok (Custom)**:
+### Using LiveKit Dashboard (Recommended)
+1. Go to https://cloud.livekit.io
+2. Navigate to "Agents" → "Deploy New Agent"
+3. Upload the livekit-agent directory
+4. Configure environment variables
+5. Deploy and note the WebSocket URL
+
+### Using CLI (Alternative)
+```bash
+cd livekit-agent
+
+# Create app using template
+lk app create --template voice-pipeline-agent-python polyglot-rag-assistant
+
+# Deploy
+lk app deploy --app polyglot-rag-assistant
+```
+
+## Step 2: Deploy API to Docker Hub
+
+```bash
+# Make script executable
+chmod +x scripts/deploy-api-docker.sh
+
+# Deploy with tag
+./scripts/deploy-api-docker.sh v1.0.0
+
+# Or just latest
+./scripts/deploy-api-docker.sh
+```
+
+## Step 3: Deploy Infrastructure with Terraform
+
+```bash
+cd terraform
+
+# Initialize Terraform
+terraform init
+
+# Plan deployment
+terraform plan -var="dockerhub_username=$DOCKER_USERNAME"
+
+# Deploy everything
+terraform apply -var="dockerhub_username=$DOCKER_USERNAME" -auto-approve
+```
+
+This creates:
+- VPC with public/private subnets
+- ECS Fargate cluster for API
+- Application Load Balancer
+- S3 bucket for UI hosting
+- CloudFront distribution
+- Secrets Manager for API keys
+
+## Step 4: Update Configuration
+
+After Terraform completes, get the outputs:
+```bash
+# Get API URL
+API_URL=$(terraform output -raw api_url)
+
+# Get CloudFront URL
+CLOUDFRONT_URL=$(terraform output -raw cloudfront_url)
+
+# Get S3 bucket name
+S3_BUCKET=$(terraform output -raw ui_bucket_name)
+
+# Get CloudFront distribution ID
+CLOUDFRONT_ID=$(terraform output -raw cloudfront_distribution_id)
+```
+
+## Step 5: Deploy UI to S3/CloudFront
+
+```bash
+# Update deployment script with your values
+export S3_BUCKET=$S3_BUCKET
+export CLOUDFRONT_DISTRIBUTION_ID=$CLOUDFRONT_ID
+export API_URL=$API_URL
+export LIVEKIT_URL="wss://your-app.livekit.cloud"  # From Step 1
+
+# Make script executable
+chmod +x scripts/deploy-ui-s3.sh
+
+# Deploy UI
+./scripts/deploy-ui-s3.sh
+```
+
+## Step 6: Verify Deployment
+
+1. **Check API Health**
    ```bash
-   # Kill current ngrok (it's pointing to port 80)
-   # Then restart pointing to Gradio:
-   ngrok http 7860
-   
-   # Or update your ngrok.yml to use port 7860
+   curl $API_URL/health
    ```
 
-## 🎯 Step-by-Step Testing Guide
+2. **Test Token Generation**
+   ```bash
+   curl -X POST $API_URL/token \
+     -H "Content-Type: application/json" \
+     -d '{"identity": "test-user", "room_name": "test-room"}'
+   ```
 
-### 1. Start Everything Locally
+3. **Access UI**
+   - Open CloudFront URL in browser: `https://$CLOUDFRONT_URL`
+   - Or use custom domain if configured
 
+4. **Check LiveKit Logs**
+   ```bash
+   lk cloud logs -f
+   ```
+
+## Quick Deploy Script
+
+Create `deploy-all.sh`:
 ```bash
-# Terminal 1: Start Gradio (creates public URL automatically)
-.venv/bin/python3 frontend/gradio_app.py
+#!/bin/bash
+set -e
 
-# Terminal 2: Start the orchestrator (optional, Gradio includes it)
-.venv/bin/python3 main.py
+echo "🚀 Starting complete deployment..."
 
-# Terminal 3: Monitor logs
-tail -f logs/*.log
+# 1. Deploy API to Docker Hub
+echo "📦 Building and pushing API..."
+./scripts/deploy-api-docker.sh v1.0.0
+
+# 2. Deploy infrastructure
+echo "🏗️ Deploying infrastructure..."
+cd terraform
+terraform apply -var="dockerhub_username=$DOCKER_USERNAME" -auto-approve
+
+# 3. Get outputs
+API_URL=$(terraform output -raw api_url)
+S3_BUCKET=$(terraform output -raw ui_bucket_name)
+CLOUDFRONT_ID=$(terraform output -raw cloudfront_distribution_id)
+CLOUDFRONT_URL=$(terraform output -raw cloudfront_url)
+
+# 4. Deploy UI
+echo "🎨 Deploying UI..."
+cd ..
+export S3_BUCKET API_URL CLOUDFRONT_DISTRIBUTION_ID=$CLOUDFRONT_ID
+./scripts/deploy-ui-s3.sh
+
+echo "✅ Deployment complete!"
+echo "🌐 UI: https://$CLOUDFRONT_URL"
+echo "🔧 API: $API_URL"
+echo "📱 LiveKit: Check dashboard for agent status"
 ```
 
-### 2. Access from Phone
+## Monitoring & Debugging
 
-**Option A: Gradio Share (Easiest)**
-- Look for the public URL in terminal: `https://xxxxx.gradio.live`
-- Open this URL on your phone
-- Works through firewalls, no setup needed!
-
-**Option B: Local Network**
+### Check ECS Logs
 ```bash
-# Get your computer's IP
-ifconfig | grep "inet " | grep -v 127.0.0.1
-# Example: 192.168.1.100
+# List services
+aws ecs list-services --cluster polyglot-rag-prod
 
-# On phone browser:
-http://192.168.1.100:7860
+# Get task ARN
+TASK_ARN=$(aws ecs list-tasks --cluster polyglot-rag-prod --service-name polyglot-rag-prod-api | jq -r '.taskArns[0]')
+
+# View logs
+aws logs tail /ecs/polyglot-rag-prod/api --follow
 ```
 
-**Option C: Ngrok**
+### LiveKit Debugging
 ```bash
-# Stop current ngrok (Ctrl+C)
-# Restart with correct port:
-ngrok http 7860
+# View agent logs
+lk cloud logs -f
 
-# Use the ngrok URL on phone:
-https://your-subdomain.ngrok-free.app
+# Test connection
+lk room create test-room
+lk room join test-room
 ```
 
-## 🌍 Full Deployment Architecture
-
-### Components & Where They Run:
-
-1. **LiveKit Agent** (Voice Processing)
-   - **Where**: LiveKit Cloud
-   - **Deploy**: `lk cloud agent deploy`
-   - **Purpose**: Handles WebRTC, voice streaming
-
-2. **Main Backend** (Orchestrator + APIs)
-   - **Where**: Your server/cloud VM
-   - **Options**:
-     - Local machine (development)
-     - AWS EC2 / Google Cloud VM
-     - Docker container
-     - Kubernetes cluster
-
-3. **Web Interface**
-   - **Gradio** (Development):
-     - Auto-creates public URLs
-     - Good for demos
-   - **Static HTML** (Production):
-     - Deploy to: Vercel, Netlify, AWS S3
-     - Files in `web-app/`
-
-4. **Mobile App**
-   - **Development**: Expo (creates tunnel automatically)
-   - **Production**: App stores
-
-## 🔧 Quick Commands
-
-### Start Everything for Demo
+### CloudFront Cache
 ```bash
-# Simple start (Gradio only)
-.venv/bin/python3 frontend/gradio_app.py
-
-# This gives you:
-# - Local URL: http://localhost:7860
-# - Public URL: https://xxxxx.gradio.live (auto-generated)
+# Invalidate cache after UI update
+aws cloudfront create-invalidation \
+  --distribution-id $CLOUDFRONT_ID \
+  --paths "/*"
 ```
 
-### Test Voice Features
-1. Click microphone in Gradio interface
-2. Speak in any language
-3. Get response in same language
+## Rollback
 
-### Test Flight Search
-Type or say:
-- "Find flights from NYC to Paris"
-- "Buscar vuelos de Madrid a Barcelona"
-- "Trouvez des vols de Paris à Londres"
-
-## 🚀 Production Deployment
-
-### Option 1: Simple Cloud VM
+If something goes wrong:
 ```bash
-# On AWS/GCP/Azure VM:
-git clone <your-repo>
-cd polyglot-rag-assistant
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+# Destroy infrastructure
+cd terraform
+terraform destroy -auto-approve
 
-# Run with systemd or supervisor
-python3 frontend/gradio_app.py --server_name 0.0.0.0
+# Remove Docker images
+docker rmi ${DOCKER_USERNAME}/polyglot-api:latest
 ```
 
-### Option 2: Docker
-```bash
-# Build and run
-docker build -t polyglot-rag .
-docker run -p 7860:7860 --env-file .env polyglot-rag
-```
+## Cost Optimization
 
-### Option 3: Kubernetes
-```bash
-kubectl apply -f k8s/deployment.yaml
-kubectl expose deployment polyglot-rag --type=LoadBalancer --port=80 --target-port=7860
-```
+- ECS Fargate: ~$0.04/hour per task
+- ALB: ~$0.025/hour + data transfer
+- S3: ~$0.023/GB storage
+- CloudFront: ~$0.085/GB transfer
+- LiveKit: Check cloud.livekit.io for pricing
 
-## 📱 Mobile App Testing
+To reduce costs:
+- Set `desired_count = 1` in terraform for dev
+- Use t4g.nano for bastion host
+- Enable S3 lifecycle policies
 
-### Using Expo (React Native)
-```bash
-cd mobile-app/react-native
-npm install
-expo start --tunnel
+## Custom Domain (Optional)
 
-# This creates a URL like: exp://xxx.xxx.xxx.xxx:19000
-# Scan QR code with Expo Go app
-```
+1. Request ACM certificate in us-east-1:
+   ```bash
+   aws acm request-certificate \
+     --domain-name polyglot-rag.com \
+     --validation-method DNS \
+     --region us-east-1
+   ```
 
-### Configure Backend URL in App
-Edit `mobile-app/react-native/config.ts`:
-```typescript
-export const API_URL = "https://xxxxx.gradio.live"; // Your Gradio public URL
-```
+2. Update Terraform variables:
+   ```hcl
+   domain_names = ["polyglot-rag.com"]
+   certificate_arn = "arn:aws:acm:us-east-1:..."
+   ```
 
-## 🔍 Troubleshooting
+3. Update Route53 after deployment
 
-### Can't access from phone?
-1. Check firewall: `sudo ufw allow 7860`
-2. Check same WiFi network
-3. Use Gradio share URL instead
+## Troubleshooting
 
-### Voice not working?
-1. Check microphone permissions in browser
-2. Ensure HTTPS (required for mic access)
-3. Use Gradio share URL (always HTTPS)
+### API Not Responding
+- Check ECS task health
+- Verify security groups allow ALB traffic
+- Check Secrets Manager permissions
 
-### Ngrok issues?
-```bash
-# Check ngrok status
-curl http://localhost:4040/api/tunnels
+### UI Not Loading
+- Verify S3 bucket policy
+- Check CloudFront distribution status
+- Clear browser cache
 
-# Restart with correct port
-pkill ngrok
-ngrok http 7860
-```
+### LiveKit Connection Issues
+- Verify API keys in agent environment
+- Check CORS settings in API
+- Ensure WebSocket traffic allowed
 
-## 🎮 Demo Mode Commands
+### Docker Push Fails
+- Run `docker login` manually
+- Check Docker Hub rate limits
+- Verify repository exists
 
-### Quick Demo Start
-```bash
-# This starts everything needed for a demo:
-./scripts/start-demo.sh
-```
+## Support
 
-### Monitor Everything
-```bash
-# Terminal 1: Logs
-tail -f logs/*.log
-
-# Terminal 2: System status
-watch -n 1 'ps aux | grep python'
-
-# Terminal 3: Network connections
-netstat -an | grep LISTEN
-```
-
-## 📝 Summary
-
-For quick testing:
-1. Run: `.venv/bin/python3 frontend/gradio_app.py`
-2. Use the public URL it generates
-3. Share that URL to test on any device!
-
-For production:
-1. Deploy LiveKit agent to cloud
-2. Deploy backend to VM/container
-3. Use proper domain with HTTPS
+- LiveKit: https://docs.livekit.io
+- AWS ECS: https://docs.aws.amazon.com/ecs/
+- Issues: Create in GitHub repo
