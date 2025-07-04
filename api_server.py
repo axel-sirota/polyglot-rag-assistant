@@ -176,6 +176,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "text": response["input_text"],
                                     "language": response.get("language", "en")
                                 })
+                            # Encode audio if present
+                            if response.get("audio") and isinstance(response["audio"], bytes):
+                                response["audio"] = base64.b64encode(response["audio"]).decode('utf-8')
                         
                         await manager.send_json(websocket, response)
                 

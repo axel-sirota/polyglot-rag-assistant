@@ -7,7 +7,7 @@ from typing import Optional, AsyncGenerator, Dict, Any, Callable
 import websockets
 import logging
 from openai import OpenAI
-from .functions import ALL_FUNCTIONS
+from .functions import REALTIME_FUNCTIONS
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.session_logging import setup_session_logging, get_session_logger
@@ -36,7 +36,7 @@ class RealtimeClient:
                 "prefix_padding_ms": 300,
                 "silence_duration_ms": 200
             },
-            "tools": ALL_FUNCTIONS,
+            "tools": REALTIME_FUNCTIONS,
             "tool_choice": "auto",
             "temperature": 0.8
             # Note: max_output_tokens is not supported in Realtime API
