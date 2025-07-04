@@ -149,13 +149,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Send interrupt to Realtime API
                     if voice_processor.realtime_client and voice_processor.realtime_client.is_connected:
                         try:
+                            # Cancel current response
                             await voice_processor.realtime_client._send_message({
-                                "type": "conversation.item.truncate",
-                                "item_id": "current",
-                                "content_index": 0,
-                                "audio_end_ms": 0
+                                "type": "response.cancel"
                             })
-                            logger.info("Sent interrupt signal to Realtime API")
+                            # Clear the input audio buffer to start fresh
+                            await voice_processor.realtime_client._send_message({
+                                "type": "input_audio_buffer.clear"
+                            })
+                            logger.info("Sent interrupt signal to Realtime API - cancelled response and cleared buffer")
                         except Exception as e:
                             logger.error(f"Failed to send interrupt: {e}")
                 continue
