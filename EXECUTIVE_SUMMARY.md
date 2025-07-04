@@ -1,6 +1,6 @@
 # Executive Summary - Polyglot RAG Assistant
 
-## Last Updated: July 4, 2025, 1:42 PM
+## Last Updated: July 4, 2025, 1:52 PM
 
 ## Session Summary
 
@@ -12,6 +12,7 @@
 5. **Improved error handling** - Better WebSocket connection management and error recovery
 6. **Fixed critical async/await error** - Flight results now return properly (was causing "coroutine never awaited" error)
 7. **Improved voice interruption handling** - Added client-side audio ducking and server-side interrupt signals
+8. **Fixed audio continuation after interruption** - Track response IDs and discard audio from interrupted responses
 
 ### Technical Implementation
 
@@ -38,6 +39,9 @@ User Browser → WebSocket → API Server → Voice Processor → OpenAI Realtim
    - Added interrupt signal sending when user speaks
    - Clear audio queue on interruption
    - Stop current audio playback immediately
+   - Track response IDs to discard audio from interrupted responses
+   - Maintain set of interrupted response IDs
+   - Skip playback of audio chunks from interrupted responses
 5. `services/flight_search_service.py` - Fixed async/await error in _get_mock_flights call
 6. `api_server.py` - Added interrupt message handling
 7. `services/realtime_client.py` - Adjusted VAD settings for better sensitivity

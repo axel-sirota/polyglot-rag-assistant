@@ -18,6 +18,8 @@ class RealtimeVoiceAssistant {
         this.gainNode = null;
         this.isUserSpeaking = false;
         this.lastUserSpeechTime = 0;
+        this.currentResponseId = null;
+        this.interruptedResponses = new Set();
         
         // UI elements
         this.statusEl = document.getElementById('status');
@@ -191,14 +193,32 @@ class RealtimeVoiceAssistant {
             case 'transcript_delta':
                 // Assistant's response transcription
                 this.updateAssistantTranscript(data.delta);
+                // Track response ID
+                if (data.response_id || data.item_id) {
+                    const responseId = data.response_id || data.item_id;
+                    if (responseId !== this.currentResponseId) {
+                        this.currentResponseId = responseId;
+                        console.log(`New response started: ${this.currentResponseId}`);
+                    }
+                }
                 break;
                 
             case 'audio_delta':
+                // Check if this audio is from an interrupted response
+                const responseId = data.response_id || data.item_id;
+                if (responseId && this.interruptedResponses.has(responseId)) {
+                    console.log(`Discarding audio from interrupted response: ${responseId}`);
+                    break;
+                }
+                
                 // Queue audio for playback
                 if (data.audio) {
                     console.log('Audio delta received:', typeof data.audio, data.audio.substring(0, 50) + '...');
                     const audioData = this.base64ToArrayBuffer(data.audio);
-                    this.audioQueue.push(audioData);
+                    this.audioQueue.push({
+                        data: audioData,
+                        responseId: responseId
+                    });
                     console.log(`Audio chunk received, queue size: ${this.audioQueue.length}`);
                     if (!this.isPlaying) {
                         this.playAudioQueue();
@@ -255,7 +275,17 @@ class RealtimeVoiceAssistant {
         }
         
         this.isPlaying = true;
-        const audioData = this.audioQueue.shift();
+        const audioChunk = this.audioQueue.shift();
+        
+        // Check if this audio is from an interrupted response
+        if (audioChunk.responseId && this.interruptedResponses.has(audioChunk.responseId)) {
+            console.log(`Skipping playback of interrupted audio: ${audioChunk.responseId}`);
+            // Continue with next chunk
+            this.playAudioQueue();
+            return;
+        }
+        
+        const audioData = audioChunk.data || audioChunk; // Handle both old and new format
         
         try {
             // Ensure audio context is running
@@ -400,6 +430,12 @@ class RealtimeVoiceAssistant {
             this.gainNode.gain.setTargetAtTime(0.2, this.audioContext.currentTime, 0.1);
         }
         
+        // Mark current response as interrupted
+        if (this.currentResponseId) {
+            console.log(`Marking response ${this.currentResponseId} as interrupted`);
+            this.interruptedResponses.add(this.currentResponseId);
+        }
+        
         // Send interrupt signal to server
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({
@@ -410,6 +446,12 @@ class RealtimeVoiceAssistant {
         // Clear audio queue to stop queued responses
         if (this.audioQueue.length > 0) {
             console.log(`Clearing ${this.audioQueue.length} audio chunks due to interruption`);
+            // Mark all queued audio response IDs as interrupted
+            this.audioQueue.forEach(chunk => {
+                if (chunk.responseId) {
+                    this.interruptedResponses.add(chunk.responseId);
+                }
+            });
             this.audioQueue = [];
         }
         
@@ -433,6 +475,16 @@ class RealtimeVoiceAssistant {
                 }
             }
         }, 600);
+        
+        // Clean up old interrupted responses after 10 seconds
+        setTimeout(() => {
+            if (this.interruptedResponses.size > 10) {
+                // Keep only the most recent 10 interrupted responses
+                const arr = Array.from(this.interruptedResponses);
+                this.interruptedResponses = new Set(arr.slice(-10));
+                console.log(`Cleaned up interrupted responses, keeping ${this.interruptedResponses.size}`);
+            }
+        }, 10000);
     }
 }
 
