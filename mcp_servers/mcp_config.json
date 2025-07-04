@@ -1,0 +1,24 @@
+{
+  "name": "flight-search",
+  "version": "1.0.0",
+  "description": "MCP server for searching flights",
+  "transport": {
+    "type": "tcp",
+    "host": "localhost",
+    "port": 8765
+  },
+  "tools": [
+    {
+      "name": "search_flights",
+      "description": "Search for flights between origin and destination"
+    },
+    {
+      "name": "get_airport_code",
+      "description": "Convert city name to airport code"
+    },
+    {
+      "name": "get_flight_details",
+      "description": "Get detailed information about a specific flight"
+    }
+  ]
+}
