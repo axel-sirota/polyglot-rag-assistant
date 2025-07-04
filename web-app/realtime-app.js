@@ -184,6 +184,7 @@ class RealtimeVoiceAssistant {
             case 'audio_delta':
                 // Queue audio for playback
                 if (data.audio) {
+                    console.log('Audio delta received:', typeof data.audio, data.audio.substring(0, 50) + '...');
                     const audioData = this.base64ToArrayBuffer(data.audio);
                     this.audioQueue.push(audioData);
                     console.log(`Audio chunk received, queue size: ${this.audioQueue.length}`);
@@ -230,6 +231,8 @@ class RealtimeVoiceAssistant {
         }
         if (assistantMsg) {
             assistantMsg.textContent += text;
+            // Scroll to show new content
+            this.scrollToBottom();
         }
     }
     
@@ -297,8 +300,8 @@ class RealtimeVoiceAssistant {
         messageDiv.appendChild(textDiv);
         this.messagesEl.appendChild(messageDiv);
         
-        // Scroll to bottom
-        this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        // Scroll to bottom - use parent container for better scrolling
+        this.scrollToBottom();
     }
     
     addAssistantMessage(text) {
@@ -319,8 +322,8 @@ class RealtimeVoiceAssistant {
         messageDiv.appendChild(textDiv);
         this.messagesEl.appendChild(messageDiv);
         
-        // Scroll to bottom
-        this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        // Scroll to bottom - use parent container for better scrolling
+        this.scrollToBottom();
     }
     
     updateStatus(status) {
@@ -359,6 +362,18 @@ class RealtimeVoiceAssistant {
         this.stopBtn.disabled = true;
         this.updateStatus('Stopped');
         this.clearTranscript();
+    }
+    
+    scrollToBottom() {
+        // Find the chat container parent
+        const chatContainer = this.messagesEl.closest('.chat-container');
+        if (chatContainer) {
+            // Smooth scroll to bottom
+            chatContainer.scrollTo({
+                top: chatContainer.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
     }
 }
 
