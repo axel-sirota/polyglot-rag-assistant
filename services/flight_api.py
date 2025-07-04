@@ -3,8 +3,11 @@ from typing import Dict, List, Optional, Any
 import os
 from datetime import datetime
 import logging
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging('flight_api')
 
 class FlightAPIWrapper:
     """Wrapper for various flight search APIs"""

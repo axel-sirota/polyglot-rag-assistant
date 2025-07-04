@@ -3,8 +3,11 @@ from livekit.plugins import openai, silero
 from typing import Optional, Tuple
 import os
 import logging
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging('voice_agent')
 
 class VoiceAgent:
     def __init__(self):

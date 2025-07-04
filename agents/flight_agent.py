@@ -6,8 +6,12 @@ from datetime import datetime, timedelta
 import json
 import re
 import logging
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging('flight_agent')
 
 class FlightSearchState(TypedDict):
     messages: List[str]
@@ -23,12 +27,12 @@ class FlightSearchState(TypedDict):
     language: str
 
 class FlightSearchAgent:
-    def __init__(self, mcp_client):
+    def __init__(self, flight_api):
         self.llm = ChatOpenAI(
             model="gpt-4o-mini",
             temperature=0.3
         )
-        self.mcp_client = mcp_client
+        self.flight_api = flight_api
         self.graph = self._build_graph()
         
         # Date patterns for different languages

@@ -9,13 +9,12 @@ import os
 from dotenv import load_dotenv
 import logging
 from typing import Optional, Dict, List, Any
+from utils.logging_config import setup_logging, configure_root_logger, suppress_noisy_loggers
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+configure_root_logger()
+suppress_noisy_loggers()
+logger = setup_logging('orchestrator')
 
 load_dotenv()
 

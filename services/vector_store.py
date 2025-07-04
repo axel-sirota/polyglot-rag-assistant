@@ -5,8 +5,11 @@ import pickle
 import os
 import logging
 from datetime import datetime
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging('vector_store')
 
 class FAISSVectorStore:
     def __init__(self, dimension: int = 1536, index_type: str = "flat"):
