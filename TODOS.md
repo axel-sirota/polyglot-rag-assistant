@@ -4,13 +4,13 @@
 Fixing the Polyglot RAG repository to use OpenAI Realtime API with fallback, removing MCP dependencies, and preparing for 2-day App Store deployment.
 
 ## Phase 1: Backend Cleanup (4 hours)
-- [ ] Remove MCP dependencies and fix imports
-  - [ ] Delete mcp_servers/flight_search_server.py
-  - [ ] Delete mcp_servers/mcp_config.json
-  - [ ] Move mcp_servers/flight_search_api.py to services/flight_search_service.py
+- [x] Remove MCP dependencies and fix imports
+  - [x] Delete mcp_servers/flight_search_server.py
+  - [x] Delete mcp_servers/mcp_config.json
+  - [x] Move mcp_servers/flight_search_api.py to services/flight_search_service.py
   - [ ] Update all imports from mcp to use direct function calling
-- [ ] Create OpenAI function definitions
-  - [ ] Create services/functions.py with flight search function schema
+- [x] Create OpenAI function definitions
+  - [x] Create services/functions.py with flight search function schema
 - [ ] Update environment variables
   - [ ] Remove MCP_SERVER_PORT and related configs from .env
 
