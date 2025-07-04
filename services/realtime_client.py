@@ -124,7 +124,7 @@ class RealtimeClient:
             "item": {
                 "type": "message",
                 "role": "user",
-                "content": [{"type": "text", "text": text}]
+                "content": [{"type": "input_text", "text": text}]  # Fixed: use input_text
             }
         }
         await self._send_message(message)
