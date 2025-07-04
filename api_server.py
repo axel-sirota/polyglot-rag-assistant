@@ -179,11 +179,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             language=language
                         ):
                             # Forward all events to client
-                            if response["type"] in ["audio_delta", "user_transcript_delta", "transcript_delta"]:
-                                # Encode audio if present
-                                if response.get("audio"):
-                                    response["audio"] = base64.b64encode(response["audio"]).decode('utf-8')
-                                await manager.send_json(websocket, response)
+                            # Encode audio if present
+                            if response.get("audio"):
+                                response["audio"] = base64.b64encode(response["audio"]).decode('utf-8')
+                            await manager.send_json(websocket, response)
                     else:
                         # Original hold-to-talk mode
                         async for response in voice_processor.process_voice_input(
@@ -221,6 +220,22 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Update connection configuration
                 if "language" in data:
                     manager.connection_data[websocket]["language"] = data["language"]
+                
+                # If continuous mode is requested, start the session
+                if data.get("continuous", False):
+                    voice_processor = manager.voice_processors.get(websocket)
+                    if voice_processor:
+                        connected = await voice_processor.start_continuous_session(
+                            language=data.get("language", "auto")
+                        )
+                        if connected:
+                            logger.info("Continuous session started successfully")
+                        else:
+                            logger.error("Failed to start continuous session")
+                            await manager.send_json(websocket, {
+                                "type": "error",
+                                "error": "Failed to start continuous session"
+                            })
                 
                 await manager.send_json(websocket, {
                     "type": "config_updated",
