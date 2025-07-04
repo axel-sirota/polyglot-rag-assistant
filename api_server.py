@@ -179,9 +179,15 @@ async def websocket_endpoint(websocket: WebSocket):
                             language=language
                         ):
                             # Forward all events to client
-                            # Encode audio if present
+                            # Check if audio needs encoding (it might already be base64)
                             if response.get("audio"):
-                                response["audio"] = base64.b64encode(response["audio"]).decode('utf-8')
+                                # If it's already a string, it's base64 encoded
+                                if isinstance(response["audio"], str):
+                                    # Already base64, pass through
+                                    pass
+                                else:
+                                    # Binary data, encode it
+                                    response["audio"] = base64.b64encode(response["audio"]).decode('utf-8')
                             await manager.send_json(websocket, response)
                     else:
                         # Original hold-to-talk mode
