@@ -191,3 +191,15 @@ ngrok http 7860
 - Scripts created for easy deployment
 - Documentation complete for all testing scenarios
 - Ngrok configured (just needs port adjustment)
+
+### 🔧 Scripts Updated
+- **start-demo.sh**: Now detects if ngrok is already running and provides instructions
+- **setup-ngrok.sh**: New script to easily configure ngrok for port 7860
+- Scripts handle ngrok.yml configuration automatically
+
+### 📱 Quick Testing Instructions
+1. **If ngrok is running on wrong port**: 
+   - Stop it: Ctrl+C in ngrok terminal
+   - Run: `./scripts/setup-ngrok.sh` or `ngrok http 7860`
+2. **Start everything**: `./scripts/start-demo.sh`
+3. **Use Gradio public URL** for easiest phone access
