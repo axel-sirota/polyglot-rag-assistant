@@ -43,10 +43,10 @@ echo -e "${GREEN}Starting services...${NC}"
 # Create logs directory if it doesn't exist
 mkdir -p logs
 
-# 1. Start MCP server (if available)
-echo "1. Starting MCP Flight Search Server..."
-(.venv/bin/python3 mcp_servers/flight_search_server.py &)
-MCP_PID=$!
+# 1. Start Flight Search API
+echo "1. Starting Flight Search API..."
+(.venv/bin/python3 mcp_servers/flight_search_api.py &)
+FLIGHT_API_PID=$!
 
 # 2. Start main orchestrator
 echo "2. Starting Main Orchestrator..."
@@ -143,13 +143,13 @@ cleanup() {
     # Kill specific PIDs if available
     [ ! -z "$GRADIO_PID" ] && kill $GRADIO_PID 2>/dev/null
     [ ! -z "$ORCHESTRATOR_PID" ] && kill $ORCHESTRATOR_PID 2>/dev/null
-    [ ! -z "$MCP_PID" ] && kill $MCP_PID 2>/dev/null
+    [ ! -z "$FLIGHT_API_PID" ] && kill $FLIGHT_API_PID 2>/dev/null
     [ ! -z "$NGROK_PID" ] && kill $NGROK_PID 2>/dev/null
     
     # Also kill by name as backup
     pkill -f "python.*gradio_app.py" 2>/dev/null
     pkill -f "python.*main.py" 2>/dev/null
-    pkill -f "python.*flight_search_server.py" 2>/dev/null
+    pkill -f "python.*flight_search_api.py" 2>/dev/null
     
     echo -e "${GREEN}Demo stopped.${NC}"
     echo -e "${BLUE}Check logs/ directory for session logs${NC}"

@@ -38,11 +38,41 @@ class FlightAPIWrapper:
         currency: str = "USD"
     ) -> List[Dict[str, Any]]:
         """
-        Search for flights using available APIs.
+        Search for flights using the Flight Search API.
         
         Returns:
             List of flight options
         """
+        # Try to use the Flight Search API first
+        flight_api_url = "http://localhost:8765"
+        
+        try:
+            logger.info(f"Calling Flight Search API: {origin} -> {destination}")
+            response = await self.http_client.post(
+                f"{flight_api_url}/search_flights",
+                json={
+                    "origin": origin,
+                    "destination": destination,
+                    "departure_date": departure_date,
+                    "return_date": return_date,
+                    "passengers": passengers,
+                    "cabin_class": cabin_class,
+                    "currency": currency
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"Got {data.get('count', 0)} flights from API")
+                return data.get("flights", [])
+            else:
+                logger.warning(f"Flight API returned status {response.status_code}")
+                
+        except Exception as e:
+            logger.warning(f"Flight API not available: {e}")
+        
+        # Fallback to direct API calls
+        logger.info("Falling back to direct API calls")
         if self.serpapi_key:
             return await self._search_serpapi(
                 origin, destination, departure_date,
