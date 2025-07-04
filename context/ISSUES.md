@@ -15,7 +15,10 @@ When user interrupts the assistant while speaking, the OpenAI Realtime API conti
 - Send interrupt signal to server (though API doesn't immediately stop)
 
 ### Root Cause
-OpenAI Realtime API limitation - can only stop at audio chunk boundaries, not instantly. The `conversation.item.truncate` API returns "item_id not found" errors.
+OpenAI Realtime API limitation - can only stop at audio chunk boundaries, not instantly. The `conversation.item.truncate` API returns "item_id not found" errors when using "current" as item_id.
+
+### Fixed
+Changed to use `response.cancel` instead of `conversation.item.truncate`, and added `input_audio_buffer.clear` to clear any buffered user audio.
 
 ### Potential Solutions
 1. Implement WebRTC connection instead of WebSocket for better control
