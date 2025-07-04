@@ -49,8 +49,46 @@ The project follows the recommended structure from `context/plan.md`:
 4. Create basic Gradio demo interface
 5. Implement voice pipeline with OpenAI STT/TTS
 
+## Latest Updates (Session 2)
+
+### Created Test Suite
+Created comprehensive test scripts in `/tests/` directory:
+1. **test_apis.py** - Tests all API connections (OpenAI, Anthropic, LiveKit, Flight APIs)
+2. **test_voice_pipeline.py** - Tests voice processing pipeline (STT → LLM → TTS)
+3. **test_flight_search.py** - Tests flight search functionality with mock and real data
+4. **test_gradio_interface.py** - Tests Gradio UI components
+5. **run_all_tests.py** - Master script to run all tests
+
+### Key Decisions
+- No separate mocks folder - all tests are integration tests that call actual APIs
+- Tests are designed for demo validation, not unit testing
+- Each test provides clear status output with ✅/❌ indicators
+
+### Dependencies Installed
+- httpx (0.28.1) - For HTTP requests in flight search
+- asyncio (3.4.3) - For async operations
+- python-dotenv (1.1.1) - For environment variable management
+
+### MCP Server Status
+- MCP package not available in standard pip
+- Flight search server ready but needs MCP framework
+- Will use direct API calls for demo instead of MCP protocol
+
 ## Important Notes
 - Using `.venv/bin/python3` for all Python commands
+- All pip installs use `.venv/bin/python3 -m pip install`
 - Following rapid prototyping philosophy: ship fast, working code > perfect code
 - Will commit after each task completion
 - Focusing on demo functionality over production readiness
+
+## How to Run Tests
+```bash
+# Run all tests
+.venv/bin/python3 tests/run_all_tests.py
+
+# Run individual tests
+.venv/bin/python3 tests/test_apis.py
+.venv/bin/python3 tests/test_voice_pipeline.py
+.venv/bin/python3 tests/test_flight_search.py
+.venv/bin/python3 tests/test_gradio_interface.py
+```
