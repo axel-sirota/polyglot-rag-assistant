@@ -146,6 +146,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Process audio data
                 audio_base64 = data.get("audio")
                 language = data.get("language", "auto")
+                continuous = data.get("continuous", False)
                 
                 if not audio_base64:
                     await manager.send_json(websocket, {
@@ -170,29 +171,44 @@ async def websocket_endpoint(websocket: WebSocket):
                     if not voice_processor:
                         raise Exception("Voice processor not initialized for this connection")
                     
-                    async for response in voice_processor.process_voice_input(
-                        audio_data,
-                        language=language,
-                        stream=True
-                    ):
-                        # Send response back to client
-                        if response["type"] == "audio_delta" and response.get("audio"):
-                            # Encode audio chunks
-                            response["audio"] = base64.b64encode(response["audio"]).decode('utf-8')
-                        elif response["type"] == "response_complete":
-                            # Include the user's transcribed text
-                            if "input_text" in response:
-                                # First send the user's transcript
-                                await manager.send_json(websocket, {
-                                    "type": "user_transcript",
-                                    "text": response["input_text"],
-                                    "language": response.get("language", "en")
-                                })
-                            # Encode audio if present
-                            if response.get("audio") and isinstance(response["audio"], bytes):
+                    # For continuous mode, we need to handle streaming differently
+                    if continuous:
+                        # Send audio chunks directly to Realtime API
+                        async for response in voice_processor.process_continuous_audio(
+                            audio_data,
+                            language=language
+                        ):
+                            # Forward all events to client
+                            if response["type"] in ["audio_delta", "user_transcript_delta", "transcript_delta"]:
+                                # Encode audio if present
+                                if response.get("audio"):
+                                    response["audio"] = base64.b64encode(response["audio"]).decode('utf-8')
+                                await manager.send_json(websocket, response)
+                    else:
+                        # Original hold-to-talk mode
+                        async for response in voice_processor.process_voice_input(
+                            audio_data,
+                            language=language,
+                            stream=True
+                        ):
+                            # Send response back to client
+                            if response["type"] == "audio_delta" and response.get("audio"):
+                                # Encode audio chunks
                                 response["audio"] = base64.b64encode(response["audio"]).decode('utf-8')
-                        
-                        await manager.send_json(websocket, response)
+                            elif response["type"] == "response_complete":
+                                # Include the user's transcribed text
+                                if "input_text" in response:
+                                    # First send the user's transcript
+                                    await manager.send_json(websocket, {
+                                        "type": "user_transcript",
+                                        "text": response["input_text"],
+                                        "language": response.get("language", "en")
+                                    })
+                                # Encode audio if present
+                                if response.get("audio") and isinstance(response["audio"], bytes):
+                                    response["audio"] = base64.b64encode(response["audio"]).decode('utf-8')
+                            
+                            await manager.send_json(websocket, response)
                 
                 except Exception as e:
                     logger.error(f"Voice processing error: {e}")

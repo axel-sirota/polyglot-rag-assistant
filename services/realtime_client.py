@@ -25,7 +25,7 @@ class RealtimeClient:
         self.session_id: Optional[str] = None
         self.is_connected = False
         
-        # Default session configuration
+        # Default session configuration with proper VAD
         self.session_config = {
             "model": "gpt-4o-realtime-preview",
             "modalities": ["text", "audio"],
@@ -34,12 +34,19 @@ class RealtimeClient:
                 "type": "server_vad",
                 "threshold": 0.5,
                 "prefix_padding_ms": 300,
-                "silence_duration_ms": 200
+                "silence_duration_ms": 500,
+                "create_response": True  # Automatically create response when VAD detects end
+            },
+            "input_audio_transcription": {
+                "model": "whisper-1"  # Enable real-time transcription
             },
             "tools": REALTIME_FUNCTIONS,
             "tool_choice": "auto",
-            "temperature": 0.8
-            # Note: max_output_tokens is not supported in Realtime API
+            "temperature": 0.8,
+            "instructions": """You are a multilingual flight search assistant.
+            Always respond in the same language as the user.
+            If the user speaks Spanish and says 'Nueva York', understand it as 'New York'.
+            Be conversational and helpful. Use the search_flights function when needed."""
         }
         
         # Callbacks for handling events
@@ -170,11 +177,27 @@ class RealtimeClient:
                         yield {"type": "assistant_message", "item": item}
                 
                 elif event_type == "response.audio_transcript.delta":
-                    # Incremental transcript update
+                    # Incremental transcript update from assistant
                     yield {
                         "type": "transcript_delta",
                         "delta": event["delta"],
                         "item_id": event["item_id"]
+                    }
+                
+                elif event_type == "conversation.item.input_audio_transcription.completed":
+                    # User's speech transcribed in real-time
+                    yield {
+                        "type": "user_transcript",
+                        "text": event["transcript"],
+                        "item_id": event["item_id"]
+                    }
+                
+                elif event_type == "conversation.item.input_audio_transcription.delta":
+                    # Real-time transcription of user's speech
+                    yield {
+                        "type": "user_transcript_delta",
+                        "delta": event["delta"],
+                        "item_id": event.get("item_id")
                     }
                 
                 elif event_type == "response.audio.delta":
