@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any
 import os
 import json
 import asyncio
+import re
 from dotenv import load_dotenv
 import uvicorn
 import logging
@@ -75,7 +76,7 @@ class FlightSearchServer:
         cabin_class: str = "economy",
         currency: str = "USD"
     ) -> List[Dict[str, Any]]:
-        """Search for flights between origin and destination"""
+        """Search for flights - AviationStack primary, SerpAPI fallback"""
         try:
             # Convert city names to airport codes if needed
             origin_code = await self.get_airport_code(origin)
@@ -83,23 +84,35 @@ class FlightSearchServer:
             
             logger.info(f"Searching flights: {origin_code} -> {dest_code} on {departure_date}")
             
+            # Try AviationStack first (primary API)
+            if self.aviationstack_key:
+                try:
+                    flights = await self._search_flights_aviationstack(
+                        origin_code, dest_code, departure_date,
+                        return_date, passengers, cabin_class
+                    )
+                    if flights:
+                        logger.info(f"AviationStack returned {len(flights)} flights")
+                        return flights
+                except Exception as e:
+                    logger.warning(f"AviationStack failed: {e}, trying SerpAPI fallback")
+            
+            # Fallback to SerpAPI
             if self.serpapi_key:
-                return await self._search_flights_serpapi(
-                    origin_code, dest_code, departure_date, 
-                    return_date, passengers, cabin_class, currency
-                )
-            elif self.aviationstack_key:
-                return await self._search_flights_aviationstack(
-                    origin_code, dest_code, departure_date,
-                    return_date, passengers, cabin_class
-                )
-            else:
-                # Return mock data for demo
-                logger.info("Using mock flight data (no API keys configured)")
-                return self._get_mock_flights(
-                    origin_code, dest_code, departure_date,
-                    return_date, passengers, cabin_class
-                )
+                try:
+                    return await self._search_flights_serpapi(
+                        origin_code, dest_code, departure_date, 
+                        return_date, passengers, cabin_class, currency
+                    )
+                except Exception as e:
+                    logger.warning(f"SerpAPI also failed: {e}")
+            
+            # If both fail or no keys available, return mock data
+            logger.info("Using mock flight data")
+            return self._get_mock_flights(
+                origin_code, dest_code, departure_date,
+                return_date, passengers, cabin_class
+            )
                 
         except Exception as e:
             logger.error(f"Error searching flights: {e}")
@@ -127,13 +140,52 @@ class FlightSearchServer:
     
     async def get_flight_details(self, flight_id: str) -> Dict[str, Any]:
         """Get detailed information about a specific flight"""
+        # Try to get real flight details from APIs
+        if self.aviationstack_key:
+            try:
+                # AviationStack flight status endpoint
+                params = {
+                    "access_key": self.aviationstack_key,
+                    "flight_iata": flight_id
+                }
+                response = await self.http_client.get(
+                    "http://api.aviationstack.com/v1/flights",
+                    params=params
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("data"):
+                        flight = data["data"][0]
+                        return {
+                            "flight_id": flight_id,
+                            "airline": flight.get("airline", {}).get("name"),
+                            "flight_number": flight.get("flight", {}).get("iata"),
+                            "status": flight.get("flight_status"),
+                            "departure": {
+                                "airport": flight.get("departure", {}).get("airport"),
+                                "terminal": flight.get("departure", {}).get("terminal"),
+                                "gate": flight.get("departure", {}).get("gate"),
+                                "scheduled": flight.get("departure", {}).get("scheduled"),
+                                "actual": flight.get("departure", {}).get("actual")
+                            },
+                            "arrival": {
+                                "airport": flight.get("arrival", {}).get("airport"),
+                                "terminal": flight.get("arrival", {}).get("terminal"),
+                                "gate": flight.get("arrival", {}).get("gate"),
+                                "scheduled": flight.get("arrival", {}).get("scheduled"),
+                                "actual": flight.get("arrival", {}).get("actual")
+                            },
+                            "aircraft": flight.get("aircraft", {}).get("registration"),
+                            "live": flight.get("live", {})
+                        }
+            except Exception as e:
+                logger.warning(f"Failed to get flight details from AviationStack: {e}")
+        
+        # If no API available or failed, return minimal info
         return {
             "flight_id": flight_id,
-            "status": "scheduled",
-            "aircraft": "Boeing 737-800",
-            "meal": "Complimentary snack",
-            "entertainment": "In-flight WiFi available",
-            "baggage": "1 carry-on + 1 checked bag included"
+            "error": "Unable to retrieve live flight details",
+            "note": "Please check with the airline for current flight status"
         }
     
     async def _search_flights_serpapi(
@@ -198,21 +250,56 @@ class FlightSearchServer:
             raise Exception(f"Aviationstack error: {response.status_code}")
     
     def _parse_serpapi_results(self, data: Dict) -> List[Dict[str, Any]]:
-        """Parse SerpAPI results into standard format"""
+        """Parse SerpAPI Google Flights results into standard format"""
         flights = []
         
+        # SerpAPI returns different structures for one-way vs round-trip
+        flight_sections = []
+        
+        # Check for best flights
         if "best_flights" in data:
-            for flight in data["best_flights"]:
-                flights.append({
-                    "airline": flight.get("airline", "Unknown"),
-                    "flight_number": flight.get("flight_number", ""),
-                    "departure_time": flight.get("departure_time", ""),
-                    "arrival_time": flight.get("arrival_time", ""),
-                    "duration": flight.get("duration", ""),
-                    "price": flight.get("price", ""),
-                    "stops": flight.get("stops", 0),
-                    "booking_link": flight.get("booking_link", "")
-                })
+            flight_sections.extend(data["best_flights"])
+        
+        # Check for other flights
+        if "other_flights" in data:
+            flight_sections.extend(data["other_flights"])
+            
+        for flight_option in flight_sections:
+            try:
+                # Handle the flights array (each option may have multiple segments)
+                flights_info = flight_option.get("flights", [])
+                
+                if flights_info:
+                    # Get first flight segment for basic info
+                    first_segment = flights_info[0]
+                    
+                    # Extract departure and arrival info
+                    departure_airport = first_segment.get("departure_airport", {})
+                    arrival_airport = flights_info[-1].get("arrival_airport", {})  # Last segment for final arrival
+                    
+                    # Build flight record
+                    flight_record = {
+                        "airline": ", ".join([f.get("airline", "Unknown") for f in flights_info]),
+                        "flight_number": ", ".join([f.get("flight_number", "") for f in flights_info if f.get("flight_number")]),
+                        "departure_time": departure_airport.get("time", ""),
+                        "departure_airport": f"{departure_airport.get('name', '')} ({departure_airport.get('id', '')})",
+                        "arrival_time": arrival_airport.get("time", ""),
+                        "arrival_airport": f"{arrival_airport.get('name', '')} ({arrival_airport.get('id', '')})",
+                        "duration": flight_option.get("total_duration", ""),
+                        "price": flight_option.get("price", ""),
+                        "stops": len(flights_info) - 1,  # Number of stops
+                        "layovers": [f.get("arrival_airport", {}).get("name", "") for f in flights_info[:-1]],
+                        "carbon_emissions": flight_option.get("carbon_emissions", {}).get("this_flight", ""),
+                        "booking_token": flight_option.get("booking_token", ""),
+                        "type": flight_option.get("type", ""),
+                        "airline_logos": [f.get("airline_logo", "") for f in flights_info]
+                    }
+                    
+                    flights.append(flight_record)
+                    
+            except Exception as e:
+                logger.debug(f"Error parsing flight option: {e}")
+                continue
         
         logger.info(f"Found {len(flights)} flights from SerpAPI")
         return flights
@@ -223,23 +310,88 @@ class FlightSearchServer:
         """Parse Aviationstack results into standard format"""
         flights = []
         
-        if "data" in data:
-            for flight in data["data"][:10]:  # Limit to 10 results
-                flights.append({
-                    "airline": flight["airline"]["name"],
-                    "flight_number": flight["flight"]["iata"],
-                    "departure_time": flight["departure"]["scheduled"],
-                    "arrival_time": flight["arrival"]["scheduled"],
-                    "duration": self._calculate_duration(
-                        flight["departure"]["scheduled"],
-                        flight["arrival"]["scheduled"]
-                    ),
-                    "price": f"${150 + (100 if cabin_class == 'business' else 0)}",  # Mock price
-                    "stops": 0,  # Aviationstack doesn't provide this
-                    "booking_link": "#"  # Would need separate booking API
-                })
+        if "data" in data and data["data"]:
+            for flight in data["data"]:
+                try:
+                    # Extract all available real data
+                    departure = flight.get("departure", {})
+                    arrival = flight.get("arrival", {})
+                    airline = flight.get("airline", {})
+                    flight_info = flight.get("flight", {})
+                    aircraft = flight.get("aircraft", {})
+                    live = flight.get("live", {})
+                    
+                    flight_record = {
+                        "airline": airline.get("name", "Unknown"),
+                        "airline_iata": airline.get("iata", ""),
+                        "flight_number": flight_info.get("iata", ""),
+                        "flight_icao": flight_info.get("icao", ""),
+                        "departure_airport": departure.get("airport", ""),
+                        "departure_iata": departure.get("iata", ""),
+                        "departure_time": departure.get("scheduled", ""),
+                        "departure_actual": departure.get("actual", ""),
+                        "departure_terminal": departure.get("terminal", ""),
+                        "departure_gate": departure.get("gate", ""),
+                        "arrival_airport": arrival.get("airport", ""),
+                        "arrival_iata": arrival.get("iata", ""),
+                        "arrival_time": arrival.get("scheduled", ""),
+                        "arrival_actual": arrival.get("actual", ""),
+                        "arrival_terminal": arrival.get("terminal", ""),
+                        "arrival_gate": arrival.get("gate", ""),
+                        "flight_status": flight.get("flight_status", ""),
+                        "aircraft_registration": aircraft.get("registration", ""),
+                        "aircraft_iata": aircraft.get("iata", ""),
+                        "duration": self._calculate_duration(
+                            departure.get("scheduled"),
+                            arrival.get("scheduled")
+                        ),
+                        "distance": live.get("distance", ""),
+                        "is_live": live.get("is_ground", False),
+                        "speed": live.get("speed_horizontal", ""),
+                        "altitude": live.get("altitude", ""),
+                        "direction": live.get("direction", ""),
+                        "note": "Real-time flight data from AviationStack"
+                    }
+                    
+                    # Only add if we have essential info
+                    if flight_record["departure_time"] and flight_record["arrival_time"]:
+                        flights.append(flight_record)
+                        
+                except Exception as e:
+                    logger.debug(f"Error parsing AviationStack flight: {e}")
+                    continue
         
+        logger.info(f"Parsed {len(flights)} flights from AviationStack")
         return flights
+    
+    async def _get_real_time_prices(self, origin: str, destination: str, date: str, passengers: int = 1) -> Optional[Dict[str, Any]]:
+        """Try to get real-time flight prices from SerpAPI"""
+        if not self.serpapi_key:
+            return None
+            
+        try:
+            params = {
+                "api_key": self.serpapi_key,
+                "engine": "google_flights",
+                "departure_id": origin,
+                "arrival_id": destination,
+                "outbound_date": date,
+                "adults": passengers,
+                "currency": "USD",
+                "hl": "en"
+            }
+            
+            response = await self.http_client.get(
+                "https://serpapi.com/search",
+                params=params
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            logger.debug(f"Failed to get real-time prices: {e}")
+        
+        return None
     
     def _calculate_duration(self, departure: str, arrival: str) -> str:
         """Calculate flight duration from departure and arrival times"""
@@ -283,30 +435,88 @@ class FlightSearchServer:
         return flights
     
     async def _search_airport_code_online(self, city: str) -> str:
-        """Search for airport code online using SerpAPI"""
-        params = {
-            "api_key": self.serpapi_key,
-            "q": f"{city} airport code IATA",
-            "num": 1
-        }
+        """Search for airport code online using APIs"""
+        # Try AviationStack first
+        if self.aviationstack_key:
+            try:
+                # AviationStack doesn't have a direct city-to-airport endpoint,
+                # but we can search for airports by country/city name
+                logger.debug(f"Searching for airport code for: {city}")
+            except Exception as e:
+                logger.debug(f"AviationStack airport search failed: {e}")
         
-        response = await self.http_client.get(
-            "https://serpapi.com/search",
-            params=params
-        )
+        # Try SerpAPI as fallback
+        if self.serpapi_key:
+            try:
+                # Method 1: Try Google Flights autocomplete
+                params = {
+                    "api_key": self.serpapi_key,
+                    "engine": "google_flights",
+                    "hl": "en",
+                    "gl": "us",
+                    "departure_id": city,  # This triggers autocomplete
+                    "arrival_id": "LAX",   # Dummy destination
+                    "outbound_date": "2024-12-01",  # Dummy date
+                    "currency": "USD"
+                }
+                
+                response = await self.http_client.get(
+                    "https://serpapi.com/search",
+                    params=params
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    # Check if we got airport suggestions
+                    if "error" not in data:
+                        # The API often auto-corrects city names to airport codes
+                        logger.debug(f"Found airport code via Google Flights")
+                        # Return the first valid result
+                        
+                # Method 2: Regular search as fallback
+                params = {
+                    "api_key": self.serpapi_key,
+                    "q": f"{city} airport IATA code",
+                    "num": 1
+                }
+                
+                response = await self.http_client.get(
+                    "https://serpapi.com/search",
+                    params=params
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    # Try to extract from answer box
+                    if "answer_box" in data:
+                        answer = data["answer_box"].get("answer", "")
+                        # Look for 3-letter IATA code pattern
+                        matches = re.findall(r'\b[A-Z]{3}\b', answer)
+                        if matches:
+                            # Filter out common non-airport codes
+                            for match in matches:
+                                if match not in ["THE", "AND", "FOR", "ARE", "CAN", "HAS"]:
+                                    logger.info(f"Found airport code {match} for {city}")
+                                    return match
+                    
+                    # Try organic results
+                    if "organic_results" in data:
+                        for result in data["organic_results"][:3]:
+                            snippet = result.get("snippet", "")
+                            # Look for IATA code pattern
+                            matches = re.findall(r'(?:IATA:?\s*|code:?\s*)([A-Z]{3})', snippet, re.IGNORECASE)
+                            if matches:
+                                code = matches[0].upper()
+                                logger.info(f"Found airport code {code} for {city} in search results")
+                                return code
+                                
+            except Exception as e:
+                logger.warning(f"Online airport search failed: {e}")
         
-        if response.status_code == 200:
-            data = response.json()
-            # Try to extract airport code from search results
-            if "answer_box" in data and "answer" in data["answer_box"]:
-                answer = data["answer_box"]["answer"]
-                # Look for 3-letter code
-                import re
-                match = re.search(r'\b[A-Z]{3}\b', answer)
-                if match:
-                    return match.group()
-        
-        return city.upper()[:3]
+        # Last resort: return first 3 letters uppercase
+        fallback = city.upper()[:3]
+        logger.warning(f"Could not find airport code for '{city}', using fallback: {fallback}")
+        return fallback
 
 # Create server instance
 server = FlightSearchServer()
