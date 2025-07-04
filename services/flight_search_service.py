@@ -17,7 +17,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.logging_config import setup_logging
 
 # Set up logging
-logger = setup_logging('flight_search_api')
+from utils.session_logging import setup_session_logging
+logger = setup_session_logging('flight_search_api')
 
 load_dotenv()
 

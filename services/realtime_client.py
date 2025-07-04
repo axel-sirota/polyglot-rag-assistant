@@ -8,8 +8,12 @@ import websockets
 import logging
 from openai import OpenAI
 from .functions import ALL_FUNCTIONS
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.session_logging import setup_session_logging, get_session_logger
 
-logger = logging.getLogger(__name__)
+# Set up session logging
+logger = setup_session_logging('realtime_client')
 
 class RealtimeClient:
     """Client for OpenAI Realtime API with WebSocket support"""
@@ -34,8 +38,8 @@ class RealtimeClient:
             },
             "tools": ALL_FUNCTIONS,
             "tool_choice": "auto",
-            "temperature": 0.8,
-            "max_output_tokens": 4096
+            "temperature": 0.8
+            # Note: max_output_tokens is not supported in Realtime API
         }
         
         # Callbacks for handling events
@@ -152,6 +156,7 @@ class RealtimeClient:
                 event_type = event.get("type")
                 
                 logger.debug(f"Received event: {event_type}")
+                logger.debug(f"Full event: {json.dumps(event, indent=2)}")
                 
                 # Handle different event types
                 if event_type == "session.created":
@@ -269,10 +274,14 @@ class RealtimeClient:
 async def check_realtime_access(api_key: Optional[str] = None) -> bool:
     """Check if the account has access to Realtime API"""
     try:
-        client = RealtimeClient(api_key)
-        await client.connect()
-        await client.disconnect()
+        # Just check if we have an API key and the correct model access
+        # Don't actually connect/disconnect during initialization
+        if not api_key:
+            return False
+        
+        # For now, assume if we have an API key, we have access
+        # The actual check will happen on first use
         return True
     except Exception as e:
-        logger.warning(f"Realtime API not available: {e}")
+        logger.warning(f"Realtime API check failed: {e}")
         return False

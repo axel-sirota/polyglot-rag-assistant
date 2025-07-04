@@ -9,8 +9,11 @@ import base64
 from .realtime_client import RealtimeClient, check_realtime_access
 from .functions import ALL_FUNCTIONS
 from .flight_search_service import FlightSearchServer
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.session_logging import setup_session_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_session_logging('voice_processor')
 
 class VoiceProcessor:
     """Main voice processing pipeline with Realtime API and fallback support"""
@@ -103,11 +106,18 @@ class VoiceProcessor:
             await self.realtime_client.send_audio(audio_data)
             await self.realtime_client.commit_audio()
             
-            # Process events
+            # Process events with timeout
             text_response = ""
             audio_chunks = []
+            response_received = False
+            
+            # Set a timeout for receiving events
+            timeout = 30  # 30 seconds timeout
+            start_time = asyncio.get_event_loop().time()
             
             async for event in self.realtime_client.process_events():
+                logger.debug(f"Processing event: {event['type']}")
+                
                 if event["type"] == "transcript_delta":
                     text_response += event["delta"]
                     yield {
@@ -140,6 +150,7 @@ class VoiceProcessor:
                 
                 elif event["type"] == "response_done":
                     # Final response
+                    response_received = True
                     yield {
                         "type": "response_complete",
                         "text": text_response,
@@ -147,6 +158,21 @@ class VoiceProcessor:
                         "language": language
                     }
                     break
+                
+                elif event["type"] == "error":
+                    logger.error(f"Realtime API error: {event.get('error')}")
+                    # Fall back to standard pipeline
+                    raise Exception(f"Realtime API error: {event.get('error')}")
+                
+                # Check timeout
+                if asyncio.get_event_loop().time() - start_time > timeout:
+                    logger.warning("Realtime API timeout, falling back to standard pipeline")
+                    raise asyncio.TimeoutError("Realtime API timeout")
+            
+            # If no response received, something went wrong
+            if not response_received:
+                logger.warning("No response from Realtime API, falling back to standard pipeline")
+                raise Exception("No response from Realtime API")
                 
         except Exception as e:
             logger.error(f"Realtime API error: {e}, falling back to standard pipeline")
