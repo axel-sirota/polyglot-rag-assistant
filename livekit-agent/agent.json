@@ -1,0 +1,5 @@
+{
+  "entrypoint": "realtime_agent.py",
+  "runtime": "python3.11",
+  "dependencies": "requirements.txt"
+}

@@ -1,70 +1,144 @@
 #!/usr/bin/env python3
 """
-LiveKit Agent for Polyglot RAG Flight Assistant
-Uses OpenAI Realtime API for voice processing
+LiveKit Agent for Polyglot Flight Search Assistant
+Uses OpenAI Realtime API with correct 2025 patterns
 """
 import os
-import asyncio
 import logging
-from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
+from typing import Dict, Any
+from datetime import datetime
 
 from dotenv import load_dotenv
-from livekit import agents, rtc
-from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
-from livekit.agents.realtime import RealtimeModel
-from livekit.agents.turn_detector import MultilingualModel
+from livekit.agents import (
+    Agent, AgentSession, JobContext, RunContext,
+    WorkerOptions, cli, function_tool
+)
 from livekit.plugins import openai, silero
 import aiohttp
-import json
+import asyncio
 
 # Load environment variables
 load_dotenv()
 
 # Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
-class FlightSearchTool:
-    """Flight search functionality for the agent"""
+class FlightAPIClient:
+    """Client for calling our flight search API"""
     
     def __init__(self):
-        self.base_url = os.getenv("API_SERVER_URL", "http://localhost:8000")
+        self.base_url = os.getenv('API_SERVER_URL', 'http://localhost:8000')
+        self.session = None
     
-    async def search_flights(self, origin: str, destination: str, departure_date: str) -> Dict[str, Any]:
-        """Search for flights using our backend API"""
+    async def __aenter__(self):
+        self.session = aiohttp.ClientSession()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.session:
+            await self.session.close()
+    
+    async def search_flights(self, origin: str, destination: str, date: str) -> Dict[str, Any]:
+        """Call our API server which uses Amadeus SDK"""
         try:
-            async with aiohttp.ClientSession() as session:
-                params = {
+            async with self.session.get(
+                f"{self.base_url}/api/flights",
+                params={
                     "origin": origin,
                     "destination": destination,
-                    "departure_date": departure_date
+                    "departure_date": date
+                }
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data
+                else:
+                    logger.error(f"API error: {response.status}")
+                    return {"error": f"API returned {response.status}"}
+        except Exception as e:
+            logger.error(f"Request failed: {e}")
+            return {"error": str(e)}
+
+
+@function_tool
+async def search_flights(
+    context: RunContext,
+    origin: str,
+    destination: str,
+    departure_date: str
+) -> Dict[str, Any]:
+    """Search for available flights between cities.
+    
+    Args:
+        origin: City name or airport code (e.g., 'New York' or 'JFK')
+        destination: City name or airport code (e.g., 'Los Angeles' or 'LAX')
+        departure_date: Date in YYYY-MM-DD format
+    
+    Returns:
+        Flight search results with pricing and availability
+    """
+    logger.info(f"Searching flights: {origin} -> {destination} on {departure_date}")
+    
+    async with FlightAPIClient() as client:
+        try:
+            results = await client.search_flights(origin, destination, departure_date)
+            
+            if "error" in results:
+                return {
+                    "status": "error",
+                    "message": f"I'm having trouble searching for flights: {results['error']}"
+                }
+            
+            flights = results.get('flights', [])
+            
+            if flights:
+                flight_count = len(flights)
+                
+                # Get cheapest flight
+                cheapest = min(flights, key=lambda x: float(x.get('price', 999999)))
+                
+                # Format top 3 flights for voice response
+                top_flights = []
+                for i, flight in enumerate(flights[:3], 1):
+                    top_flights.append(
+                        f"Option {i}: {flight['airline']} for ${flight['price']}, "
+                        f"departing at {flight['departure_time']}"
+                    )
+                
+                return {
+                    "status": "success",
+                    "message": f"I found {flight_count} flights from {origin} to {destination}. "
+                              f"The cheapest option is ${cheapest['price']} with {cheapest['airline']}. "
+                              f"Here are the top options: " + " | ".join(top_flights),
+                    "flights": flights[:5]  # Return top 5 for details
+                }
+            else:
+                return {
+                    "status": "no_flights",
+                    "message": f"I couldn't find any flights from {origin} to {destination} "
+                              f"on {departure_date}. Would you like to try different dates?"
                 }
                 
-                async with session.get(f"{self.base_url}/api/flights", params=params) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    else:
-                        logger.error(f"Flight search failed: {response.status}")
-                        return {"error": f"Flight search failed: {response.status}"}
-                        
         except Exception as e:
-            logger.error(f"Flight search error: {str(e)}")
-            return {"error": str(e)}
+            logger.error(f"Search error: {e}")
+            return {
+                "status": "error",
+                "message": "I'm having trouble searching for flights right now. Please try again."
+            }
 
 
 async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent"""
     logger.info(f"Agent started for room {ctx.room.name}")
     
-    # Initialize flight search tool
-    flight_tool = FlightSearchTool()
+    # Connect to the room
+    await ctx.connect()
     
-    # Configure the agent with OpenAI Realtime API
-    initial_ctx = rtc.ChatContext().append(
-        role="system",
-        text="""You are a multilingual flight search assistant powered by LiveKit.
+    # Initialize agent with flight booking instructions
+    agent = Agent(
+        instructions="""You are a multilingual flight booking assistant powered by LiveKit and Amadeus.
 
 CRITICAL LANGUAGE RULES:
 1. DETECT the language the user is speaking in (Spanish, English, French, Chinese, etc.)
@@ -74,109 +148,72 @@ CRITICAL LANGUAGE RULES:
 5. Never mix languages in your response
 
 LANGUAGE DETECTION:
-- "buscar vuelos" or "quiero encontrar" = Spanish → Respond in Spanish
-- "find flights" or "I want" = English → Respond in English
+- "buscar vuelos" or "quiero volar" = Spanish → Respond in Spanish
+- "find flights" or "I want to fly" = English → Respond in English
 - "chercher des vols" = French → Respond in French
+- "查找航班" = Chinese → Respond in Chinese
 - And so on for all languages
 
 FLIGHT SEARCH:
-When users ask about flights, help them search using natural conversation.
-Ask for any missing information (origin, destination, date) in their language.
-Present results clearly in their language.
+- When users ask about flights, help them search using natural conversation
+- Ask for any missing information (origin, destination, date) in their language
+- Present results clearly and conversationally in their language
+- Convert city names to appropriate format for search (e.g., "Nueva York" → "New York")
 
-IMPORTANT: 
-- Be conversational and natural
+CONVERSATION STYLE:
+- Be friendly, helpful, and conversational
 - If you don't find specific airlines, acknowledge it and show alternatives
-- Format prices and times appropriately for their culture"""
+- Format prices and times appropriately for their culture
+- Keep responses concise but informative
+
+You can search for real flights using the search_flights function.
+Always confirm important details like dates and destinations.""",
+        tools=[search_flights]
     )
     
-    # Connect to the room
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    
-    # Create the agent session with OpenAI Realtime
-    assistant = agents.VoiceAssistant(
-        model=RealtimeModel(
-            # OpenAI Realtime configuration
-            instructions=initial_ctx.messages[0].content,
+    # Configure RealtimeModel with correct 2025 syntax
+    session = AgentSession(
+        llm=openai.realtime.RealtimeModel(
+            voice="alloy",  # or "coral", "sage", etc.
+            model="gpt-4o-realtime-preview-2024-12-17",
+            temperature=0.8,
+            tool_choice="auto",
             turn_detection=openai.realtime.TurnDetection(
                 type="server_vad",
                 threshold=0.5,
                 prefix_padding_ms=300,
-                silence_duration_ms=200,
-                create_response=True
-            ),
-            modalities=["text", "audio"],
-            voice="alloy"
+                silence_duration_ms=500,
+                create_response=True,
+                interrupt_response=True
+            )
         ),
-        transcription=openai.STT(
-            model="whisper-1",
-            language=None  # Auto-detect language
-        )
+        vad=silero.VAD.load()  # Voice activity detection
     )
     
-    # Function to handle flight searches
-    @assistant.function_call("search_flights")
-    async def search_flights_handler(
-        origin: str,
-        destination: str, 
-        departure_date: str
-    ):
-        """Search for flights between airports"""
-        logger.info(f"Searching flights: {origin} -> {destination} on {departure_date}")
-        
-        # Call our backend API
-        results = await flight_tool.search_flights(origin, destination, departure_date)
-        
-        if "error" in results:
-            return f"I encountered an error searching for flights: {results['error']}"
-        
-        if not results.get("flights"):
-            return "I couldn't find any flights for that route and date."
-        
-        # Format the results
-        flights = results["flights"][:5]  # Show top 5 flights
-        
-        response = f"I found {len(results['flights'])} flights. Here are the best options:\n\n"
-        
-        for i, flight in enumerate(flights, 1):
-            response += f"{i}. {flight['airline']} - ${flight['price']}\n"
-            response += f"   Departure: {flight['departure_time']}\n"
-            response += f"   Arrival: {flight['arrival_time']}\n"
-            if flight.get('stops', 0) > 0:
-                response += f"   Stops: {flight['stops']}\n"
-            response += "\n"
-        
-        return response
+    # Wait for participant
+    participant = await ctx.wait_for_participant()
+    logger.info(f"Participant joined: {participant.identity}")
     
-    # Start the assistant
-    assistant.start(ctx.room)
+    # Start the session
+    await session.start(agent=agent, room=ctx.room)
     
-    # Handle participant events
-    @ctx.room.on("participant_connected")
-    def on_participant_connected(participant: rtc.RemoteParticipant):
-        logger.info(f"Participant connected: {participant.identity}")
-    
-    @ctx.room.on("participant_disconnected")
-    def on_participant_disconnected(participant: rtc.RemoteParticipant):
-        logger.info(f"Participant disconnected: {participant.identity}")
-    
-    # Keep the agent running
-    try:
-        await asyncio.Future()  # Run forever
-    except asyncio.CancelledError:
-        logger.info("Agent cancelled")
-    finally:
-        await assistant.aclose()
-        logger.info("Agent stopped")
+    # Initial greeting (will be in user's language after they speak)
+    await session.say(
+        "Hello! I'm your multilingual flight booking assistant. "
+        "I can help you search for flights in any language. "
+        "Just tell me where you'd like to go!",
+        allow_interruptions=True
+    )
 
 
 if __name__ == "__main__":
-    # Run the agent
+    # Run the agent with LiveKit CLI
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
-            api_key=os.getenv("LIVEKIT_API_KEY"),
-            api_secret=os.getenv("LIVEKIT_API_SECRET"),
-            ws_url=os.getenv("LIVEKIT_URL", "wss://polyglot-rag.livekit.cloud"),
+            worker_type="process",
+            num_workers=1,
+            prewarm_process=True,
+            shutdown_process_after_idle_timeout=60.0
         )
     )
