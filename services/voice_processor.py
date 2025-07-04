@@ -173,10 +173,15 @@ class VoiceProcessor:
             try:
                 # Transcribe with language hint
                 with open(temp_file_path, "rb") as audio_file:
+                    # Only pass language if it's a valid ISO-639-1 code
+                    lang_param = None
+                    if language != 'auto' and len(language) == 2:
+                        lang_param = language
+                    
                     transcript = await self.client.audio.transcriptions.create(
                         model="whisper-1",
                         file=audio_file,
-                        language=language if language != 'auto' else None,
+                        language=lang_param,
                         response_format="verbose_json"
                     )
                 
@@ -301,6 +306,7 @@ class VoiceProcessor:
                     )
                 
                 detected = result.language if hasattr(result, 'language') else 'en'
+                # Whisper already returns ISO-639-1 codes, no conversion needed
                 logger.info(f"Detected language: {detected}")
                 return detected
                 
