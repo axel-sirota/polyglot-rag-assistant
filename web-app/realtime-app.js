@@ -100,6 +100,12 @@ class RealtimeVoiceAssistant {
             sampleRate: this.sampleRate
         });
         
+        // Resume audio context if suspended (required for some browsers)
+        if (this.audioContext.state === 'suspended') {
+            await this.audioContext.resume();
+            console.log('Audio context resumed');
+        }
+        
         const source = this.audioContext.createMediaStreamSource(this.mediaStream);
         
         // Use ScriptProcessor for now (AudioWorklet requires HTTPS in some browsers)
@@ -180,6 +186,7 @@ class RealtimeVoiceAssistant {
                 if (data.audio) {
                     const audioData = this.base64ToArrayBuffer(data.audio);
                     this.audioQueue.push(audioData);
+                    console.log(`Audio chunk received, queue size: ${this.audioQueue.length}`);
                     if (!this.isPlaying) {
                         this.playAudioQueue();
                     }
@@ -236,6 +243,11 @@ class RealtimeVoiceAssistant {
         const audioData = this.audioQueue.shift();
         
         try {
+            // Ensure audio context is running
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+                console.log('Audio context resumed for playback');
+            }
             // Convert PCM16 to Float32 for Web Audio
             const pcm16 = new Int16Array(audioData);
             const float32 = new Float32Array(pcm16.length);
@@ -259,6 +271,7 @@ class RealtimeVoiceAssistant {
             };
             
             source.start();
+            console.log(`Playing audio chunk, ${this.audioQueue.length} chunks remaining`);
             
         } catch (error) {
             console.error('Audio playback error:', error);

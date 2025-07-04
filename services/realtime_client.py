@@ -38,15 +38,18 @@ class RealtimeClient:
                 "create_response": True  # Automatically create response when VAD detects end
             },
             "input_audio_transcription": {
-                "model": "whisper-1"  # Enable real-time transcription
+                "model": "whisper-1"  # Enable real-time transcription, auto-detect language
             },
             "tools": REALTIME_FUNCTIONS,
             "tool_choice": "auto",
             "temperature": 0.8,
             "instructions": """You are a multilingual flight search assistant.
-            Always respond in the same language as the user.
-            If the user speaks Spanish and says 'Nueva York', understand it as 'New York'.
-            Be conversational and helpful. Use the search_flights function when needed."""
+            IMPORTANT: Always detect and respond in the SAME language the user is speaking.
+            If the user speaks English, respond in English.
+            If the user speaks Spanish, respond in Spanish.
+            If the user speaks any other language, respond in that language.
+            Help users find flights using the search_flights function.
+            Be conversational and helpful."""
         }
         
         # Callbacks for handling events

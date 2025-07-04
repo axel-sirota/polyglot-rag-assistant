@@ -34,6 +34,9 @@ class VoiceProcessor:
         self.conversation_history = []
         self.max_history = 10  # Keep last 10 exchanges
         
+        # Event queue for continuous mode
+        self.event_queue = None
+        
         # Language detection settings
         self.supported_languages = {
             'en': 'English',
@@ -106,11 +109,13 @@ class VoiceProcessor:
     async def _process_realtime_events(self):
         """Process events from Realtime API in background"""
         try:
+            # Initialize event queue if not already done
+            if self.event_queue is None:
+                self.event_queue = asyncio.Queue()
+                
             async for event in self.realtime_client.process_events():
                 logger.debug(f"Realtime event: {event['type']}")
                 # Store events in a queue to be retrieved by the main process
-                if not hasattr(self, 'event_queue'):
-                    self.event_queue = asyncio.Queue()
                 await self.event_queue.put(event)
                 
         except Exception as e:
@@ -143,15 +148,19 @@ class VoiceProcessor:
             
             # Send audio chunk to Realtime API
             await self.realtime_client.send_audio(audio_chunk)
+            logger.debug(f"Sent audio chunk, queue size: {self.event_queue.qsize() if self.event_queue else 'None'}")
             
             # Check for any events in the queue
-            if hasattr(self, 'event_queue'):
-                while not self.event_queue.empty():
+            if self.event_queue is not None:
+                # Process multiple events if available
+                events_processed = 0
+                while not self.event_queue.empty() and events_processed < 10:
                     try:
                         event = self.event_queue.get_nowait()
                         
                         if event["type"] == "user_transcript_delta":
                             # Real-time transcription of user speech
+                            logger.debug(f"Yielding user_transcript_delta: {event.get('delta', '')}")
                             yield event
                         
                         elif event["type"] == "user_transcript":
@@ -169,6 +178,10 @@ class VoiceProcessor:
                         
                         elif event["type"] == "audio_delta":
                             # Assistant's audio response
+                            logger.debug(f"Yielding audio_delta event")
+                            # Ensure the audio data is in the correct field
+                            if "delta" in event and not "audio" in event:
+                                event["audio"] = event["delta"]
                             yield event
                         
                         elif event["type"] == "function_call":
@@ -196,8 +209,12 @@ class VoiceProcessor:
                             logger.error(f"Realtime API error: {event.get('error')}")
                             yield event
                             
+                        events_processed += 1
                     except asyncio.QueueEmpty:
                         break
+            
+            # Small delay to prevent tight loop
+            await asyncio.sleep(0.01)
                     
         except Exception as e:
             logger.error(f"Continuous audio processing error: {e}")
