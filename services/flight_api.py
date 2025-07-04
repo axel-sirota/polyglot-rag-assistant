@@ -14,6 +14,16 @@ class FlightAPIWrapper:
         self.aviationstack_key = os.getenv("AVIATIONSTACK_API_KEY")
         self.http_client = httpx.AsyncClient(timeout=30.0)
     
+    async def initialize(self):
+        """Initialize the flight API wrapper"""
+        logger.info("Flight API initialized")
+        if self.serpapi_key:
+            logger.info("Using SerpAPI for flight search")
+        elif self.aviationstack_key:
+            logger.info("Using Aviationstack for flight search")
+        else:
+            logger.info("Using mock data for flight search")
+    
     async def search_flights(
         self,
         origin: str,
