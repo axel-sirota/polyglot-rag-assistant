@@ -24,9 +24,10 @@ Fixing the Polyglot RAG repository to use OpenAI Realtime API with fallback, rem
   - [x] Add fallback to standard STT→LLM→TTS pipeline
 
 ## Phase 3: Simplified Frontend (4 hours)
-- [ ] Create single web interface
-  - [ ] Update web-app/index.html
-  - [ ] Update web-app/app.js with WebSocket support
+- [x] Create single web interface
+  - [x] Update web-app/index.html
+  - [x] Update web-app/app.js with WebSocket support
+  - [x] Create FastAPI backend with WebSocket support in api/main.py
   - [ ] Remove Gradio dependency for production
 
 ## Phase 4: Mobile App with Expo (8 hours)

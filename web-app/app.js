@@ -1,389 +1,419 @@
-// Configuration
-const CONFIG = {
-    LIVEKIT_URL: process.env.LIVEKIT_URL || 'wss://your-project.livekit.cloud',
-    API_ENDPOINT: process.env.API_ENDPOINT || '/api',
-    ROOM_NAME: 'polyglot-rag-demo'
-};
+/**
+ * Voice Assistant Web Application
+ * Uses WebSocket for real-time voice interaction with the backend
+ */
 
-// Global state
-let room = null;
-let localAudioTrack = null;
-let isRecording = false;
-let currentLanguage = 'en';
-
-// DOM elements
-const chatMessages = document.getElementById('chat-messages');
-const textInput = document.getElementById('text-input');
-const sendBtn = document.getElementById('send-btn');
-const voiceBtn = document.getElementById('voice-btn');
-const connectionStatus = document.getElementById('connection-status');
-const detectedLanguage = document.getElementById('detected-language');
-const flightResultsContainer = document.getElementById('flight-results-container');
-
-// Initialize the application
-async function init() {
-    try {
-        // Get access token from backend
-        const token = await getAccessToken();
+class VoiceAssistant {
+    constructor() {
+        this.socket = null;
+        this.mediaRecorder = null;
+        this.audioChunks = [];
+        this.isRecording = false;
+        this.isConnected = false;
+        this.audioContext = null;
+        this.currentLanguage = 'auto';
         
-        // Connect to LiveKit room
-        await connectToRoom(token);
+        // WebSocket URL - adjust based on your deployment
+        this.wsUrl = window.location.hostname === 'localhost' 
+            ? 'ws://localhost:8000/ws'
+            : `wss://${window.location.hostname}/ws`;
+        
+        // UI Elements
+        this.elements = {
+            connectionStatus: document.getElementById('connection-status'),
+            statusText: document.querySelector('.status-text'),
+            chatMessages: document.getElementById('chat-messages'),
+            textInput: document.getElementById('text-input'),
+            sendBtn: document.getElementById('send-btn'),
+            voiceBtn: document.getElementById('voice-btn'),
+            detectedLanguage: document.getElementById('detected-language'),
+            flightResults: document.getElementById('flight-results-container')
+        };
+        
+        this.init();
+    }
+    
+    async init() {
+        // Initialize WebSocket connection
+        await this.connectWebSocket();
         
         // Set up event listeners
-        setupEventListeners();
+        this.setupEventListeners();
         
-        updateConnectionStatus('connected');
-        addSystemMessage('Connected to Polyglot RAG Assistant. Speak or type in any language!');
-    } catch (error) {
-        console.error('Initialization error:', error);
-        updateConnectionStatus('disconnected');
-        addSystemMessage('Failed to connect. Please refresh the page.');
+        // Request microphone permissions
+        await this.requestMicrophonePermission();
+        
+        // Initialize audio context
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
-}
-
-// Get access token from backend
-async function getAccessToken() {
-    try {
-        const response = await fetch(`${CONFIG.API_ENDPOINT}/token`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                identity: `web-user-${Date.now()}`,
-                room: CONFIG.ROOM_NAME
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to get access token');
+    
+    async connectWebSocket() {
+        try {
+            this.socket = new WebSocket(this.wsUrl);
+            
+            this.socket.onopen = () => {
+                console.log('WebSocket connected');
+                this.isConnected = true;
+                this.updateConnectionStatus('connected');
+                
+                // Send initial configuration
+                this.socket.send(JSON.stringify({
+                    type: 'config',
+                    language: this.currentLanguage
+                }));
+                
+                this.addSystemMessage('Connected to Flight Assistant. Speak or type in any language!');
+            };
+            
+            this.socket.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                await this.handleServerMessage(data);
+            };
+            
+            this.socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                this.updateConnectionStatus('error');
+            };
+            
+            this.socket.onclose = () => {
+                console.log('WebSocket disconnected');
+                this.isConnected = false;
+                this.updateConnectionStatus('disconnected');
+                
+                // Attempt to reconnect after 3 seconds
+                setTimeout(() => {
+                    if (!this.isConnected) {
+                        this.connectWebSocket();
+                    }
+                }, 3000);
+            };
+            
+        } catch (error) {
+            console.error('Failed to connect WebSocket:', error);
+            this.updateConnectionStatus('error');
         }
-        
-        const data = await response.json();
-        return data.token;
-    } catch (error) {
-        console.error('Token error:', error);
-        // For demo, return a mock token
-        return 'mock-token';
     }
-}
-
-// Connect to LiveKit room
-async function connectToRoom(token) {
-    updateConnectionStatus('connecting');
     
-    room = new LivekitClient.Room({
-        adaptiveStream: true,
-        dynacast: true,
-        videoCaptureDefaults: {
-            resolution: LivekitClient.VideoPresets.h720.resolution
-        }
-    });
-    
-    // Set up room event listeners
-    room.on('participantConnected', (participant) => {
-        console.log('Participant connected:', participant.identity);
-    });
-    
-    room.on('trackSubscribed', (track, publication, participant) => {
-        if (track.kind === 'audio') {
-            // Handle incoming audio (assistant's voice)
-            const audioElement = track.attach();
-            document.body.appendChild(audioElement);
-        }
-    });
-    
-    room.on('dataReceived', (data, participant) => {
-        // Handle data messages (transcriptions, results, etc.)
-        handleDataMessage(data);
-    });
-    
-    room.on('disconnected', () => {
-        updateConnectionStatus('disconnected');
-        addSystemMessage('Disconnected from server.');
-    });
-    
-    // Connect to the room
-    await room.connect(CONFIG.LIVEKIT_URL, token);
-}
-
-// Set up event listeners
-function setupEventListeners() {
-    // Text input
-    textInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendTextMessage();
-        }
-    });
-    
-    sendBtn.addEventListener('click', sendTextMessage);
-    
-    // Voice input
-    voiceBtn.addEventListener('mousedown', startRecording);
-    voiceBtn.addEventListener('mouseup', stopRecording);
-    voiceBtn.addEventListener('mouseleave', stopRecording);
-    
-    // Touch events for mobile
-    voiceBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        startRecording();
-    });
-    voiceBtn.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        stopRecording();
-    });
-}
-
-// Send text message
-async function sendTextMessage() {
-    const message = textInput.value.trim();
-    if (!message) return;
-    
-    // Add user message to chat
-    addUserMessage(message);
-    textInput.value = '';
-    
-    // Send to backend
-    try {
-        const response = await fetch(`${CONFIG.API_ENDPOINT}/chat`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                message: message,
-                language: currentLanguage
-            })
-        });
-        
-        const data = await response.json();
-        
-        // Update language if detected
-        if (data.language) {
-            updateDetectedLanguage(data.language);
-        }
-        
-        // Add assistant response
-        addAssistantMessage(data.response);
-        
-        // Update flight results if any
-        if (data.flightResults) {
-            displayFlightResults(data.flightResults);
-        }
-    } catch (error) {
-        console.error('Chat error:', error);
-        addAssistantMessage('Sorry, I encountered an error. Please try again.');
-    }
-}
-
-// Start voice recording
-async function startRecording() {
-    if (isRecording) return;
-    
-    try {
-        isRecording = true;
-        voiceBtn.classList.add('recording');
-        voiceBtn.querySelector('span').textContent = 'Recording...';
-        
-        // Request microphone permission
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        
-        // Create audio track
-        localAudioTrack = await LivekitClient.createLocalAudioTrack({
-            mediaStreamTrack: stream.getAudioTracks()[0]
-        });
-        
-        // Publish to room
-        await room.localParticipant.publishTrack(localAudioTrack);
-        
-    } catch (error) {
-        console.error('Recording error:', error);
-        stopRecording();
-        addSystemMessage('Microphone access denied. Please enable microphone permissions.');
-    }
-}
-
-// Stop voice recording
-async function stopRecording() {
-    if (!isRecording) return;
-    
-    isRecording = false;
-    voiceBtn.classList.remove('recording');
-    voiceBtn.querySelector('span').textContent = 'Hold to Talk';
-    
-    if (localAudioTrack) {
-        // Stop and unpublish track
-        room.localParticipant.unpublishTrack(localAudioTrack);
-        localAudioTrack.stop();
-        localAudioTrack = null;
-    }
-}
-
-// Handle data messages from LiveKit
-function handleDataMessage(data) {
-    try {
-        const message = JSON.parse(new TextDecoder().decode(data));
-        
-        switch (message.type) {
-            case 'transcription':
-                // Show user's transcribed speech
-                addUserMessage(message.text);
+    async handleServerMessage(data) {
+        switch (data.type) {
+            case 'transcript_delta':
+                // Real-time transcript update
+                this.updateTranscript(data.text);
                 break;
                 
-            case 'response':
-                // Show assistant's response
-                addAssistantMessage(message.text);
-                if (message.language) {
-                    updateDetectedLanguage(message.language);
+            case 'audio_delta':
+                // Real-time audio response
+                if (data.audio) {
+                    await this.playAudioChunk(data.audio);
                 }
                 break;
                 
-            case 'flightResults':
-                // Display flight results
-                displayFlightResults(message.results);
+            case 'response_complete':
+                // Complete response received
+                this.addAssistantMessage(data.text);
+                if (data.audio) {
+                    await this.playAudio(data.audio);
+                }
+                if (data.language) {
+                    this.updateDetectedLanguage(data.language);
+                }
+                // Parse for flight results
+                if (data.text && data.text.includes('flight')) {
+                    this.parseAndDisplayFlights(data.text);
+                }
                 break;
                 
             case 'error':
-                addSystemMessage(`Error: ${message.message}`);
+                console.error('Server error:', data.error);
+                this.addSystemMessage(`Error: ${data.error}`);
+                break;
+                
+            case 'config_updated':
+                console.log('Configuration updated:', data.config);
+                break;
+                
+            case 'pong':
+                // Heartbeat response
                 break;
         }
-    } catch (error) {
-        console.error('Data message error:', error);
-    }
-}
-
-// Add user message to chat
-function addUserMessage(text) {
-    const messageEl = createMessageElement(text, 'user');
-    chatMessages.appendChild(messageEl);
-    scrollToBottom();
-}
-
-// Add assistant message to chat
-function addAssistantMessage(text) {
-    const messageEl = createMessageElement(text, 'assistant');
-    chatMessages.appendChild(messageEl);
-    scrollToBottom();
-}
-
-// Add system message to chat
-function addSystemMessage(text) {
-    const messageEl = createMessageElement(text, 'system');
-    chatMessages.appendChild(messageEl);
-    scrollToBottom();
-}
-
-// Create message element
-function createMessageElement(text, type) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${type}`;
-    
-    const avatarDiv = document.createElement('div');
-    avatarDiv.className = 'message-avatar';
-    avatarDiv.textContent = type === 'user' ? '👤' : type === 'assistant' ? '🤖' : 'ℹ️';
-    
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'message-content';
-    contentDiv.textContent = text;
-    
-    const timeDiv = document.createElement('div');
-    timeDiv.className = 'message-time';
-    timeDiv.textContent = new Date().toLocaleTimeString();
-    contentDiv.appendChild(timeDiv);
-    
-    messageDiv.appendChild(avatarDiv);
-    messageDiv.appendChild(contentDiv);
-    
-    return messageDiv;
-}
-
-// Update connection status
-function updateConnectionStatus(status) {
-    connectionStatus.className = `status ${status}`;
-    const statusText = connectionStatus.querySelector('.status-text');
-    
-    switch (status) {
-        case 'connected':
-            statusText.textContent = 'Connected';
-            break;
-        case 'connecting':
-            statusText.textContent = 'Connecting...';
-            break;
-        case 'disconnected':
-            statusText.textContent = 'Disconnected';
-            break;
-    }
-}
-
-// Update detected language
-function updateDetectedLanguage(language) {
-    currentLanguage = language;
-    const languages = {
-        'en': 'English',
-        'es': 'Spanish',
-        'fr': 'French',
-        'de': 'German',
-        'it': 'Italian',
-        'pt': 'Portuguese',
-        'ja': 'Japanese',
-        'zh': 'Chinese',
-        'ko': 'Korean',
-        'ar': 'Arabic',
-        'hi': 'Hindi',
-        'ru': 'Russian'
-    };
-    
-    detectedLanguage.textContent = languages[language] || language.toUpperCase();
-}
-
-// Display flight results
-function displayFlightResults(results) {
-    if (!results || results.length === 0) {
-        flightResultsContainer.innerHTML = '<p class="no-results">No flights found</p>';
-        return;
     }
     
-    flightResultsContainer.innerHTML = '';
-    
-    results.slice(0, 5).forEach((flight, index) => {
-        const flightCard = document.createElement('div');
-        flightCard.className = 'flight-card';
+    setupEventListeners() {
+        // Voice button - hold to record
+        this.elements.voiceBtn.addEventListener('mousedown', () => this.startRecording());
+        this.elements.voiceBtn.addEventListener('mouseup', () => this.stopRecording());
+        this.elements.voiceBtn.addEventListener('mouseleave', () => this.stopRecording());
         
-        flightCard.innerHTML = `
-            <h4>${flight.airline} - ${flight.flight_number}</h4>
-            <div class="flight-details">
-                <div>🛫 ${formatTime(flight.departure_time)}</div>
-                <div>🛬 ${formatTime(flight.arrival_time)}</div>
-                <div>⏱️ ${flight.duration}</div>
-                <div>🔄 ${flight.stops} stops</div>
+        // Touch events for mobile
+        this.elements.voiceBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.startRecording();
+        });
+        this.elements.voiceBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.stopRecording();
+        });
+        
+        // Text input
+        this.elements.sendBtn.addEventListener('click', () => this.sendTextMessage());
+        this.elements.textInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.sendTextMessage();
+            }
+        });
+        
+        // Heartbeat to keep connection alive
+        setInterval(() => {
+            if (this.isConnected) {
+                this.socket.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000);
+    }
+    
+    async requestMicrophonePermission() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(track => track.stop());
+            console.log('Microphone permission granted');
+        } catch (error) {
+            console.error('Microphone permission denied:', error);
+            this.addSystemMessage('Microphone access is required for voice input.');
+        }
+    }
+    
+    async startRecording() {
+        if (!this.isConnected) {
+            this.addSystemMessage('Not connected to server. Please wait...');
+            return;
+        }
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    sampleRate: 16000
+                }
+            });
+            
+            this.mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'audio/webm'
+            });
+            
+            this.audioChunks = [];
+            
+            this.mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    this.audioChunks.push(event.data);
+                }
+            };
+            
+            this.mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                await this.sendAudioData(audioBlob);
+                
+                // Stop all tracks
+                stream.getTracks().forEach(track => track.stop());
+            };
+            
+            this.mediaRecorder.start();
+            this.isRecording = true;
+            
+            // Update UI
+            this.elements.voiceBtn.classList.add('recording');
+            this.elements.voiceBtn.querySelector('span').textContent = 'Recording...';
+            
+        } catch (error) {
+            console.error('Failed to start recording:', error);
+            this.addSystemMessage('Failed to start recording. Please check your microphone.');
+        }
+    }
+    
+    stopRecording() {
+        if (this.mediaRecorder && this.isRecording) {
+            this.mediaRecorder.stop();
+            this.isRecording = false;
+            
+            // Update UI
+            this.elements.voiceBtn.classList.remove('recording');
+            this.elements.voiceBtn.querySelector('span').textContent = 'Hold to Talk';
+        }
+    }
+    
+    async sendAudioData(audioBlob) {
+        // Convert audio blob to base64
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64Audio = reader.result.split(',')[1];
+            
+            // Send to server
+            this.socket.send(JSON.stringify({
+                type: 'audio',
+                audio: base64Audio,
+                language: this.currentLanguage
+            }));
+            
+            this.addUserMessage('[Voice message]');
+        };
+        reader.readAsDataURL(audioBlob);
+    }
+    
+    sendTextMessage() {
+        const text = this.elements.textInput.value.trim();
+        if (!text) return;
+        
+        if (!this.isConnected) {
+            this.addSystemMessage('Not connected to server. Please wait...');
+            return;
+        }
+        
+        // For now, create a simple text-to-audio flow
+        // In production, you might want a dedicated text endpoint
+        this.addUserMessage(text);
+        this.elements.textInput.value = '';
+        
+        // Send as text message (server should handle this)
+        // For demo, we'll use the audio endpoint with TTS
+        this.processTextQuery(text);
+    }
+    
+    async processTextQuery(text) {
+        try {
+            const response = await fetch('http://localhost:8000/process_text', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    text: text,
+                    language: this.currentLanguage
+                })
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                this.addAssistantMessage(data.message || "Processing your request...");
+            }
+        } catch (error) {
+            console.error('Text query error:', error);
+            this.addSystemMessage('Failed to process text query.');
+        }
+    }
+    
+    addMessage(role, content, className = '') {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${className}`;
+        
+        const timestamp = new Date().toLocaleTimeString();
+        const roleEmoji = role === 'user' ? '👤' : role === 'assistant' ? '🤖' : 'ℹ️';
+        
+        messageDiv.innerHTML = `
+            <div class="message-avatar">${roleEmoji}</div>
+            <div class="message-content">
+                <div class="message-text">${this.escapeHtml(content)}</div>
+                <div class="message-time">${timestamp}</div>
             </div>
-            <div class="flight-price">${flight.price}</div>
         `;
         
-        flightResultsContainer.appendChild(flightCard);
-    });
-}
-
-// Format time for display
-function formatTime(isoTime) {
-    try {
-        const date = new Date(isoTime);
-        return date.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    } catch {
-        return isoTime;
+        this.elements.chatMessages.appendChild(messageDiv);
+        this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
+    }
+    
+    addUserMessage(content) {
+        this.addMessage('user', content, 'user');
+    }
+    
+    addAssistantMessage(content) {
+        this.addMessage('assistant', content, 'assistant');
+    }
+    
+    addSystemMessage(content) {
+        this.addMessage('system', content, 'system');
+    }
+    
+    updateTranscript(text) {
+        // Find the last assistant message and update it
+        const messages = this.elements.chatMessages.querySelectorAll('.message.assistant');
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            const contentDiv = lastMessage.querySelector('.message-text');
+            contentDiv.textContent += text;
+        } else {
+            // Create new assistant message
+            this.addAssistantMessage(text);
+        }
+    }
+    
+    async playAudio(base64Audio) {
+        try {
+            // Create audio element
+            const audio = new Audio(`data:audio/mp3;base64,${base64Audio}`);
+            await audio.play();
+        } catch (error) {
+            console.error('Failed to play audio:', error);
+        }
+    }
+    
+    async playAudioChunk(base64Audio) {
+        // For streaming audio, you might want to queue chunks
+        // This is a simplified version
+        await this.playAudio(base64Audio);
+    }
+    
+    updateConnectionStatus(status) {
+        const statusElement = this.elements.connectionStatus;
+        statusElement.className = `status ${status}`;
+        
+        const statusTexts = {
+            connected: 'Connected',
+            disconnected: 'Disconnected',
+            error: 'Connection Error'
+        };
+        
+        this.elements.statusText.textContent = statusTexts[status] || 'Unknown';
+    }
+    
+    updateDetectedLanguage(language) {
+        const languageNames = {
+            en: 'English',
+            es: 'Spanish',
+            fr: 'French',
+            de: 'German',
+            it: 'Italian',
+            pt: 'Portuguese',
+            zh: 'Chinese',
+            ja: 'Japanese',
+            ko: 'Korean',
+            ar: 'Arabic',
+            hi: 'Hindi',
+            ru: 'Russian'
+        };
+        
+        this.elements.detectedLanguage.textContent = languageNames[language] || language;
+    }
+    
+    parseAndDisplayFlights(text) {
+        // Simple parsing for demo - in production, flights would come structured
+        if (text.toLowerCase().includes('found') && text.includes('flight')) {
+            const flightCard = document.createElement('div');
+            flightCard.className = 'flight-card';
+            flightCard.innerHTML = `
+                <h4>Flight Results</h4>
+                <p>${text}</p>
+            `;
+            this.elements.flightResults.innerHTML = '';
+            this.elements.flightResults.appendChild(flightCard);
+        }
+    }
+    
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 }
 
-// Scroll chat to bottom
-function scrollToBottom() {
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', init);
+// Initialize the voice assistant when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    window.voiceAssistant = new VoiceAssistant();
+});
