@@ -98,20 +98,21 @@ S3_BUCKET=$(terraform output -raw ui_bucket_name)
 CLOUDFRONT_ID=$(terraform output -raw cloudfront_distribution_id)
 ```
 
-## Step 5: Deploy UI to S3/CloudFront
+## Step 5: Deploy UI to Vercel
 
 ```bash
+# Make sure Vercel token is in .env
+# VERCEL_TOKEN=your-token-here
+
 # Update deployment script with your values
-export S3_BUCKET=$S3_BUCKET
-export CLOUDFRONT_DISTRIBUTION_ID=$CLOUDFRONT_ID
 export API_URL=$API_URL
 export LIVEKIT_URL="wss://your-app.livekit.cloud"  # From Step 1
 
 # Make script executable
-chmod +x scripts/deploy-ui-s3.sh
+chmod +x scripts/deploy-ui-vercel.sh
 
 # Deploy UI
-./scripts/deploy-ui-s3.sh
+./scripts/deploy-ui-vercel.sh
 ```
 
 ## Step 6: Verify Deployment
