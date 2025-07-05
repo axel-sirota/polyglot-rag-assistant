@@ -240,10 +240,7 @@ Always confirm important details like dates and destinations.""",
                     model="gpt-4o",  # Use full GPT-4 for better multilingual support
                     temperature=0.7
                 ),
-                tts=openai.TTS(
-                    voice="alloy",
-                    speed=1.0
-                ),
+                tts=cartesia.TTS(),  # Use default voice
                 turn_detection="vad"
             )
             logger.info("✅ STT-LLM-TTS pipeline configured with Deepgram STT + GPT-4 + OpenAI TTS")
