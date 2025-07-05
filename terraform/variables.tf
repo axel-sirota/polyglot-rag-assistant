@@ -40,6 +40,18 @@ variable "api_image_tag" {
   default     = "latest"
 }
 
+variable "agent_image_tag" {
+  description = "Docker image tag for LiveKit Agent"
+  type        = string
+  default     = "latest"
+}
+
+variable "livekit_url" {
+  description = "LiveKit WebSocket URL"
+  type        = string
+  default     = "wss://polyglot-rag-assistant-3l6xagej.livekit.cloud"
+}
+
 variable "certificate_arn" {
   description = "ACM certificate ARN for ALB (optional - leave empty for HTTP only)"
   type        = string

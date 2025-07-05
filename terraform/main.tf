@@ -75,4 +75,31 @@ module "api_service" {
   }
 }
 
+# LiveKit Agent Service
+module "agent_service" {
+  source = "./modules/ecs_service"
+  
+  project_name        = var.project_name
+  environment         = var.environment
+  service_name        = "livekit-agent"
+  cluster_id          = module.ecs.cluster_id
+  vpc_id              = module.vpc.vpc_id
+  subnet_ids          = module.vpc.private_subnet_ids
+  target_group_arn    = null  # No ALB needed for agent
+  
+  container_image     = "${var.dockerhub_username}/polyglot-agent:${var.agent_image_tag}"
+  container_port      = 8081  # Health check port
+  cpu                 = 1024
+  memory              = 2048
+  desired_count       = 2
+  
+  environment_variables = {
+    LIVEKIT_URL          = var.livekit_url
+    LIVEKIT_API_KEY      = var.livekit_api_key
+    LIVEKIT_API_SECRET   = var.livekit_api_secret
+    OPENAI_API_KEY       = var.openai_api_key
+    API_SERVER_URL       = "http://${module.alb.alb_dns_name}"
+  }
+}
+
 # Note: UI deployment handled by Vercel - see scripts/deploy-ui-vercel.sh

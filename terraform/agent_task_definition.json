@@ -1,0 +1,52 @@
+[
+  {
+    "name": "livekit-agent",
+    "image": "${docker_image}",
+    "cpu": 1024,
+    "memory": 2048,
+    "essential": true,
+    "environment": [
+      {
+        "name": "LIVEKIT_URL",
+        "value": "${livekit_url}"
+      },
+      {
+        "name": "LIVEKIT_API_KEY",
+        "value": "${livekit_api_key}"
+      },
+      {
+        "name": "LIVEKIT_API_SECRET",
+        "value": "${livekit_api_secret}"
+      },
+      {
+        "name": "OPENAI_API_KEY",
+        "value": "${openai_api_key}"
+      },
+      {
+        "name": "API_SERVER_URL",
+        "value": "${api_server_url}"
+      }
+    ],
+    "portMappings": [
+      {
+        "containerPort": 8081,
+        "protocol": "tcp"
+      }
+    ],
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "${log_group}",
+        "awslogs-region": "${aws_region}",
+        "awslogs-stream-prefix": "ecs"
+      }
+    },
+    "healthCheck": {
+      "command": ["CMD-SHELL", "curl -f http://localhost:8081/ || exit 1"],
+      "interval": 30,
+      "timeout": 10,
+      "retries": 3,
+      "startPeriod": 60
+    }
+  }
+]

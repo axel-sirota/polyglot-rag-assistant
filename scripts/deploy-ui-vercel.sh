@@ -13,7 +13,7 @@ else
 fi
 
 # Configuration
-API_URL=${API_URL:-"https://api.polyglot-rag.com"}
+API_URL=${API_URL:-"http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com"}
 LIVEKIT_URL=${LIVEKIT_URL:-"wss://polyglot-rag-assistant-3l6xagej.livekit.cloud"}
 VERCEL_TOKEN=${VERCEL_TOKEN:-""}
 PROJECT_NAME="polyglot-rag-ui"
@@ -33,10 +33,17 @@ fi
 echo "🔧 Updating configuration..."
 # Create temporary directory for deployment
 DEPLOY_DIR=$(mktemp -d)
-cp -r web-app/* $DEPLOY_DIR/
+# Copy ONLY the LiveKit client files, not the old UI
+cp web-app/livekit-client.html $DEPLOY_DIR/index.html
+cp web-app/styles.css $DEPLOY_DIR/ 2>/dev/null || true
 
-# Update API and LiveKit URLs in the files
-find $DEPLOY_DIR -name "*.html" -exec sed -i.bak "s|http://localhost:8000|${API_URL}|g" {} \;
+# Copy API routes for Vercel
+mkdir -p $DEPLOY_DIR/api
+cp -r web-app/api/* $DEPLOY_DIR/api/ 2>/dev/null || true
+
+# Update LiveKit URL in the files
+# API calls are already using relative URLs
+find $DEPLOY_DIR -name "*.html" -exec sed -i.bak "s|wss://polyglot-rag.livekit.cloud|${LIVEKIT_URL}|g" {} \;
 find $DEPLOY_DIR -name "*.js" -exec sed -i.bak "s|http://localhost:8000|${API_URL}|g" {} \;
 find $DEPLOY_DIR -name "*.js" -exec sed -i.bak "s|wss://polyglot-rag.livekit.cloud|${LIVEKIT_URL}|g" {} \;
 

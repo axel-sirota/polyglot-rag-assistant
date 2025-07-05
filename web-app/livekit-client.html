@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Polyglot Flight Assistant - LiveKit</title>
-    <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
     <style>
         :root {
             --primary-color: #007bff;
@@ -269,14 +269,14 @@
             
             try {
                 // Get a token from our backend
-                const response = await fetch(`${API_URL}/api/livekit/token`, {
+                const response = await fetch('/api/livekit-token', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         identity: `user-${Date.now()}`,
-                        room: 'flight-assistant'
+                        room: 'flight-demo'  // Using new room with agent metadata
                     })
                 });
                 

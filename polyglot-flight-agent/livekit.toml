@@ -1,0 +1,7 @@
+[agent]
+name = "polyglot-flight-agent"
+worker_type = "process"
+entrypoint = "agent.py"
+
+[agent.environment]
+API_SERVER_URL = "http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com"

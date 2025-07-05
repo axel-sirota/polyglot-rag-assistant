@@ -414,10 +414,17 @@ async def get_livekit_token(request: Request):
                 can_subscribe=True,
                 can_publish_data=True
             )
-        ).to_jwt()
+        )
+        
+        # Add room metadata if provided
+        room_metadata = data.get("roomMetadata")
+        if room_metadata:
+            token = token.with_metadata(room_metadata)
+        
+        jwt_token = token.to_jwt()
         
         return {
-            "token": token,
+            "token": jwt_token,
             "identity": identity,
             "room": room_name,
             "name": name
