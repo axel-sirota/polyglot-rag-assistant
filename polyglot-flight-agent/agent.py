@@ -11,17 +11,21 @@ from datetime import datetime
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent, AgentSession, JobContext, RunContext,
-    WorkerOptions, cli, function_tool
+    WorkerOptions, cli, function_tool, JobProcess, AutoSubscribe
 )
-from livekit.plugins import openai, silero
+from livekit.plugins import openai, silero, deepgram, elevenlabs
+from livekit import rtc
 import aiohttp
 import asyncio
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with more detail
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -129,16 +133,42 @@ async def search_flights(
             }
 
 
+def prewarm(proc: JobProcess):
+    """Preload models to prevent performance issues"""
+    logger.info("Prewarming models...")
+    
+    # Preload VAD with optimized settings
+    proc.userdata["vad"] = silero.VAD.load(
+        min_speech_duration=0.05,
+        min_silence_duration=0.55,
+        prefix_padding_duration=0.5,
+        activation_threshold=0.5,
+        sample_rate=16000,
+        force_cpu=True  # Prevents GPU contention
+    )
+    
+    logger.info("Models prewarmed successfully")
+
+
 async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent"""
     logger.info(f"Agent started for room {ctx.room.name}")
     
-    # Connect to the room
-    await ctx.connect()
-    
-    # Initialize agent with flight booking instructions
-    agent = Agent(
-        instructions="""You are a multilingual flight booking assistant powered by LiveKit and Amadeus.
+    try:
+        # Connect to the room with AUDIO_ONLY to prevent video processing overhead
+        logger.info("Connecting to room with AUDIO_ONLY subscription...")
+        await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+        logger.info("Successfully connected to room")
+        
+        # Get preloaded VAD from prewarm
+        vad = ctx.proc.userdata.get("vad")
+        if not vad:
+            logger.warning("VAD not preloaded, loading now...")
+            vad = silero.VAD.load(force_cpu=True)
+        
+        # Initialize agent with flight booking instructions
+        agent = Agent(
+            instructions="""You are a multilingual flight booking assistant powered by LiveKit and Amadeus.
 
 CRITICAL LANGUAGE RULES:
 1. DETECT the language the user is speaking in (Spanish, English, French, Chinese, etc.)
@@ -168,31 +198,77 @@ CONVERSATION STYLE:
 
 You can search for real flights using the search_flights function.
 Always confirm important details like dates and destinations.""",
-        tools=[search_flights]
-    )
-    
-    # Configure RealtimeModel with correct 2025 syntax
-    session = AgentSession(
-        llm=openai.realtime.RealtimeModel(
-            voice="alloy",  # or "coral", "sage", etc.
-            model="gpt-4o-realtime-preview-2024-12-17",
-            temperature=0.8,
-            tool_choice="auto"
-        ),
-        vad=silero.VAD.load()  # Voice activity detection
-    )
-    
-    # Start the session immediately with the room
-    await session.start(agent=agent, room=ctx.room)
-    
-    # The agent will now handle participants joining
-    logger.info(f"Agent session started for room {ctx.room.name}")
+            tools=[search_flights]
+        )
+        
+        # Configure session with multiple provider options for robustness
+        logger.info("Initializing AgentSession with voice providers...")
+        
+        # Try OpenAI Realtime first, fallback to STT-LLM-TTS pipeline
+        try:
+            session = AgentSession(
+                llm=openai.realtime.RealtimeModel(
+                    voice="alloy",
+                    model="gpt-4o-realtime-preview-2024-12-17",
+                    temperature=0.8,
+                    tool_choice="auto"
+                ),
+                vad=vad,
+                turn_detection="vad"  # Critical for proper audio handling
+            )
+            logger.info("Using OpenAI Realtime model")
+        except Exception as e:
+            logger.warning(f"OpenAI Realtime failed, using STT-LLM-TTS pipeline: {e}")
+            # Fallback to traditional pipeline
+            session = AgentSession(
+                vad=vad,
+                stt=deepgram.STT(model="nova-3"),
+                llm=openai.LLM(model="gpt-4o-mini"),
+                tts=elevenlabs.TTS(),
+                turn_detection="vad"
+            )
+        
+        # Add event handlers for debugging
+        @session.on("user_state_changed")
+        def on_user_state_changed(event):
+            logger.info(f"👤 User state changed: {event.state}")
+        
+        @session.on("agent_state_changed")
+        def on_agent_state_changed(event):
+            logger.info(f"🤖 Agent state changed: {event.state}")
+        
+        @session.on("function_call")
+        def on_function_call(event):
+            logger.info(f"🔧 Function called: {event.function_name}")
+        
+        # Handle audio track subscription
+        @ctx.room.on("track_subscribed")
+        async def on_track_subscribed(
+            track: rtc.Track, 
+            publication: rtc.TrackPublication, 
+            participant: rtc.RemoteParticipant
+        ):
+            if track.kind == rtc.TrackKind.KIND_AUDIO:
+                logger.info(f"🎤 Audio track subscribed from {participant.identity}")
+                # The AgentSession will automatically handle the audio stream
+        
+        # Start the session with the room
+        logger.info("Starting agent session...")
+        await session.start(agent=agent, room=ctx.room)
+        
+        # The agent will now handle participants joining
+        logger.info(f"✅ Agent session started successfully for room {ctx.room.name}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error in entrypoint: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":
     # Run the agent with LiveKit CLI
     cli.run_app(
         WorkerOptions(
-            entrypoint_fnc=entrypoint
+            entrypoint_fnc=entrypoint,
+            prewarm_fnc=prewarm
         )
     )

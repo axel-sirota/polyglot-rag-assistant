@@ -394,9 +394,34 @@ async def get_livekit_token(request: Request):
         # Get LiveKit credentials from environment
         api_key = os.getenv("LIVEKIT_API_KEY")
         api_secret = os.getenv("LIVEKIT_API_SECRET")
+        livekit_url = os.getenv("LIVEKIT_URL", "wss://polyglot-rag-assistant-3l6xagej.livekit.cloud")
         
         if not api_key or not api_secret:
             raise HTTPException(status_code=500, detail="LiveKit credentials not configured")
+        
+        # Create room with metadata to trigger agent dispatch
+        room_metadata = data.get("roomMetadata")
+        if room_metadata:
+            try:
+                # Create RoomServiceClient to create/update room
+                from livekit.api import RoomServiceClient
+                room_service = RoomServiceClient(
+                    host=livekit_url.replace("wss://", "https://").replace("ws://", "http://"),
+                    api_key=api_key,
+                    api_secret=api_secret
+                )
+                
+                # Create or update room with metadata
+                await room_service.create_room(
+                    api.CreateRoomRequest(
+                        name=room_name,
+                        metadata=room_metadata if isinstance(room_metadata, str) else json.dumps(room_metadata)
+                    )
+                )
+                logger.info(f"Created/updated room {room_name} with metadata: {room_metadata}")
+            except Exception as e:
+                logger.warning(f"Failed to create room with metadata: {e}")
+                # Continue anyway - room will be created when first participant joins
         
         # Create access token using LiveKit SDK
         token = api.AccessToken(
@@ -416,18 +441,14 @@ async def get_livekit_token(request: Request):
             )
         )
         
-        # Add room metadata if provided
-        room_metadata = data.get("roomMetadata")
-        if room_metadata:
-            token = token.with_metadata(room_metadata)
-        
         jwt_token = token.to_jwt()
         
         return {
             "token": jwt_token,
             "identity": identity,
             "room": room_name,
-            "name": name
+            "name": name,
+            "metadata": room_metadata
         }
         
     except Exception as e:
