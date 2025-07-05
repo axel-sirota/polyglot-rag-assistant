@@ -204,29 +204,49 @@ Always confirm important details like dates and destinations.""",
         # Configure session with multiple provider options for robustness
         logger.info("Initializing AgentSession with voice providers...")
         
-        # Try OpenAI Realtime first, fallback to STT-LLM-TTS pipeline
-        try:
+        # IMPORTANT: Due to a bug in LiveKit Agents 1.1.5, OpenAI Realtime audio is NOT published as tracks
+        # Using STT-LLM-TTS pipeline for reliable audio output
+        # Set use_realtime = True to test OpenAI Realtime (but audio won't work)
+        use_realtime = False
+        
+        if use_realtime:
+            # WARNING: Audio will NOT work with OpenAI Realtime in LiveKit 1.1.5
+            # The WebSocket generates audio but doesn't publish it as LiveKit tracks
+            try:
+                session = AgentSession(
+                    llm=openai.realtime.RealtimeModel(
+                        voice="alloy",
+                        model="gpt-4o-realtime-preview-2024-12-17",
+                        temperature=0.8,
+                        tool_choice="auto"
+                    ),
+                    vad=vad,
+                )
+                logger.warning("⚠️ Using OpenAI Realtime - AUDIO WILL NOT WORK due to LiveKit bug")
+            except Exception as e:
+                logger.warning(f"OpenAI Realtime failed: {e}")
+                use_realtime = False
+        
+        if not use_realtime:
+            # Use reliable STT-LLM-TTS pipeline that properly publishes audio tracks
+            logger.info("🎵 Using STT-LLM-TTS pipeline for working audio output")
             session = AgentSession(
-                llm=openai.realtime.RealtimeModel(
-                    voice="alloy",
-                    model="gpt-4o-realtime-preview-2024-12-17",
-                    temperature=0.8,
-                    tool_choice="auto"
+                vad=vad,
+                stt=deepgram.STT(
+                    model="nova-3",
+                    language="en"  # Default to English, will auto-detect other languages
                 ),
-                vad=vad,
-                turn_detection="vad"  # Critical for proper audio handling
-            )
-            logger.info("Using OpenAI Realtime model")
-        except Exception as e:
-            logger.warning(f"OpenAI Realtime failed, using STT-LLM-TTS pipeline: {e}")
-            # Fallback to traditional pipeline
-            session = AgentSession(
-                vad=vad,
-                stt=deepgram.STT(model="nova-3"),
-                llm=openai.LLM(model="gpt-4o-mini"),
-                tts=cartesia.TTS(),
+                llm=openai.LLM(
+                    model="gpt-4o",  # Use full GPT-4 for better multilingual support
+                    temperature=0.7
+                ),
+                tts=openai.TTS(
+                    voice="alloy",
+                    speed=1.0
+                ),
                 turn_detection="vad"
             )
+            logger.info("✅ STT-LLM-TTS pipeline configured with Deepgram STT + GPT-4 + OpenAI TTS")
         
         # Add event handlers for debugging with proper error handling
         @session.on("user_state_changed")
@@ -266,6 +286,16 @@ Always confirm important details like dates and destinations.""",
         def on_agent_speech(event):
             logger.info(f"🗣️ Agent speaking: {getattr(event, 'text', 'unknown')}")
         
+        # Add handler for speech creation (audio initialization)
+        @session.on("speech_created")
+        def on_speech_created(event):
+            logger.info(f"🎵 Speech created - Audio channel active: {event}")
+            
+        # Monitor when audio is actually being sent
+        @session.on("metrics_collected")
+        def on_metrics(event):
+            logger.debug(f"📊 Metrics: {event}")
+        
         # Monitor track publishing
         @ctx.room.on("track_published")
         def on_track_published(publication: rtc.LocalTrackPublication, participant: rtc.LocalParticipant):
@@ -289,9 +319,26 @@ Always confirm important details like dates and destinations.""",
         # The agent will now handle participants joining
         logger.info(f"✅ Agent session started successfully for room {ctx.room.name}")
         
-        # Note: With OpenAI Realtime model, we cannot use session.say() 
-        # because it requires a separate TTS model. The Realtime model
-        # handles both speech input and output natively through the conversation.
+        # Initialize conversation with a greeting
+        # With STT-LLM-TTS pipeline, we can use session.say() for the initial greeting
+        logger.info("Sending initial greeting...")
+        try:
+            if use_realtime:
+                # For Realtime, use generate_reply (but audio won't work anyway)
+                await session.generate_reply(
+                    instructions="Greet the user warmly in a brief, natural way and ask how you can help them find flights today.",
+                    allow_interruptions=True
+                )
+            else:
+                # For STT-LLM-TTS, we can use say() which works properly
+                await session.say(
+                    "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
+                    allow_interruptions=True
+                )
+            logger.info("✅ Initial greeting sent")
+        except Exception as e:
+            logger.error(f"Failed to send greeting: {e}")
+            # Continue anyway - the agent will still respond to user input
         
     except Exception as e:
         logger.error(f"❌ Error in entrypoint: {e}", exc_info=True)
