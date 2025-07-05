@@ -6,9 +6,10 @@
    - AWS Account with CLI configured (`aws configure`)
    - Docker Hub account
    - LiveKit Cloud account
+   - Vercel account
    - Terraform installed (v1.0+)
    - Docker installed
-   - Node.js/npm (for UI if needed)
+   - Node.js/npm (for Vercel CLI)
 
 2. **Environment Variables**
    ```bash
@@ -19,43 +20,35 @@
    # - DOCKER_PASSWORD
    # - LIVEKIT_API_KEY
    # - LIVEKIT_API_SECRET
+   # - LIVEKIT_URL
    # - AMADEUS_CLIENT_ID
    # - AMADEUS_CLIENT_SECRET
    # - OPENAI_API_KEY
    # - ANTHROPIC_API_KEY
+   # - VERCEL_TOKEN
    ```
 
 ## Step 1: Deploy LiveKit Agent
 
-### Using LiveKit Dashboard (Recommended)
-1. Go to https://cloud.livekit.io
-2. Navigate to "Agents" → "Deploy New Agent"
-3. Upload the livekit-agent directory
-4. Configure environment variables
-5. Deploy and note the WebSocket URL
-
-### Using CLI (Alternative)
+### Using LiveKit Cloud
 ```bash
 cd livekit-agent
 
-# Create app using template
-lk app create --template voice-pipeline-agent-python polyglot-rag-assistant
+# Deploy to LiveKit Cloud
+lk cloud agent deploy
 
-# Deploy
-lk app deploy --app polyglot-rag-assistant
+# Note the WebSocket URL (e.g., wss://polyglot-rag-assistant-3l6xagej.livekit.cloud)
 ```
 
-## Step 2: Deploy API to Docker Hub
+## Step 2: Build and Push API Docker Image
 
 ```bash
-# Make script executable
-chmod +x scripts/deploy-api-docker.sh
+# Test Docker image locally first
+docker build -t polyglot-api:test .
+docker run -p 8000:8000 --env-file .env polyglot-api:test
 
-# Deploy with tag
-./scripts/deploy-api-docker.sh v1.0.0
-
-# Or just latest
-./scripts/deploy-api-docker.sh
+# When ready, push to Docker Hub from your deployment instance
+# (Not from local machine for security)
 ```
 
 ## Step 3: Deploy Infrastructure with Terraform
@@ -63,62 +56,42 @@ chmod +x scripts/deploy-api-docker.sh
 ```bash
 cd terraform
 
-# Initialize Terraform
+# Initialize Terraform (only first time)
 terraform init
 
+# Generate terraform.auto.tfvars from .env
+../scripts/generate-tfvars.sh
+
 # Plan deployment
-terraform plan -var="dockerhub_username=$DOCKER_USERNAME"
+terraform plan
 
 # Deploy everything
-terraform apply -var="dockerhub_username=$DOCKER_USERNAME" -auto-approve
+terraform apply -auto-approve
 ```
 
 This creates:
 - VPC with public/private subnets
 - ECS Fargate cluster for API
 - Application Load Balancer
-- S3 bucket for UI hosting
-- CloudFront distribution
-- Secrets Manager for API keys
+- All necessary networking and security groups
 
-## Step 4: Update Configuration
-
-After Terraform completes, get the outputs:
-```bash
-# Get API URL
-API_URL=$(terraform output -raw api_url)
-
-# Get CloudFront URL
-CLOUDFRONT_URL=$(terraform output -raw cloudfront_url)
-
-# Get S3 bucket name
-S3_BUCKET=$(terraform output -raw ui_bucket_name)
-
-# Get CloudFront distribution ID
-CLOUDFRONT_ID=$(terraform output -raw cloudfront_distribution_id)
-```
-
-## Step 5: Deploy UI to Vercel
+## Step 4: Deploy UI to Vercel
 
 ```bash
-# Make sure Vercel token is in .env
-# VERCEL_TOKEN=your-token-here
-
-# Update deployment script with your values
-export API_URL=$API_URL
-export LIVEKIT_URL="wss://your-app.livekit.cloud"  # From Step 1
-
-# Make script executable
-chmod +x scripts/deploy-ui-vercel.sh
-
-# Deploy UI
+# Deploy UI with automatic configuration
 ./scripts/deploy-ui-vercel.sh
 ```
 
-## Step 6: Verify Deployment
+Your UI will be deployed to:
+- Production URL: `https://polyglot-rag-[hash]-axel-sirotas-projects.vercel.app`
+- Project Dashboard: `https://vercel.com/axel-sirotas-projects/polyglot-rag-ui`
+
+## Step 5: Verify Deployment
 
 1. **Check API Health**
    ```bash
+   # Get API URL from Terraform output
+   API_URL=$(cd terraform && terraform output -raw api_url)
    curl $API_URL/health
    ```
 
@@ -130,62 +103,33 @@ chmod +x scripts/deploy-ui-vercel.sh
    ```
 
 3. **Access UI**
-   - Open CloudFront URL in browser: `https://$CLOUDFRONT_URL`
-   - Or use custom domain if configured
+   - Open the Vercel URL from Step 4
+   - Test voice interaction
 
-4. **Check LiveKit Logs**
+4. **Monitor LiveKit Agent**
    ```bash
    lk cloud logs -f
    ```
 
-## Quick Deploy Script
+## Current Deployment Status
 
-Create `deploy-all.sh`:
-```bash
-#!/bin/bash
-set -e
-
-echo "🚀 Starting complete deployment..."
-
-# 1. Deploy API to Docker Hub
-echo "📦 Building and pushing API..."
-./scripts/deploy-api-docker.sh v1.0.0
-
-# 2. Deploy infrastructure
-echo "🏗️ Deploying infrastructure..."
-cd terraform
-terraform apply -var="dockerhub_username=$DOCKER_USERNAME" -auto-approve
-
-# 3. Get outputs
-API_URL=$(terraform output -raw api_url)
-S3_BUCKET=$(terraform output -raw ui_bucket_name)
-CLOUDFRONT_ID=$(terraform output -raw cloudfront_distribution_id)
-CLOUDFRONT_URL=$(terraform output -raw cloudfront_url)
-
-# 4. Deploy UI
-echo "🎨 Deploying UI..."
-cd ..
-export S3_BUCKET API_URL CLOUDFRONT_DISTRIBUTION_ID=$CLOUDFRONT_ID
-./scripts/deploy-ui-s3.sh
-
-echo "✅ Deployment complete!"
-echo "🌐 UI: https://$CLOUDFRONT_URL"
-echo "🔧 API: $API_URL"
-echo "📱 LiveKit: Check dashboard for agent status"
-```
+As of latest deployment:
+- **API**: Running at `http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com`
+- **UI**: Deployed to Vercel at `https://polyglot-rag-bcauxftd3-axel-sirotas-projects.vercel.app`
+- **LiveKit**: Agent deployed to `wss://polyglot-rag-assistant-3l6xagej.livekit.cloud`
+- **ECS**: Cluster `polyglot-rag-prod` with service `polyglot-rag-prod-api`
 
 ## Monitoring & Debugging
 
 ### Check ECS Logs
 ```bash
-# List services
-aws ecs list-services --cluster polyglot-rag-prod
-
-# Get task ARN
-TASK_ARN=$(aws ecs list-tasks --cluster polyglot-rag-prod --service-name polyglot-rag-prod-api | jq -r '.taskArns[0]')
-
-# View logs
+# View API logs
 aws logs tail /ecs/polyglot-rag-prod/api --follow
+
+# Check task status
+aws ecs describe-services \
+  --cluster polyglot-rag-prod \
+  --services polyglot-rag-prod-api
 ```
 
 ### LiveKit Debugging
@@ -193,86 +137,110 @@ aws logs tail /ecs/polyglot-rag-prod/api --follow
 # View agent logs
 lk cloud logs -f
 
-# Test connection
+# Test room creation
 lk room create test-room
-lk room join test-room
 ```
 
-### CloudFront Cache
+### Vercel Deployment
 ```bash
-# Invalidate cache after UI update
-aws cloudfront create-invalidation \
-  --distribution-id $CLOUDFRONT_ID \
-  --paths "/*"
+# Check deployment status
+vercel ls
+
+# View logs
+vercel logs
 ```
 
-## Rollback
+## Update Deployments
 
-If something goes wrong:
+### Update API
 ```bash
-# Destroy infrastructure
+# Build and push new Docker image
+# Then update ECS service
+aws ecs update-service \
+  --cluster polyglot-rag-prod \
+  --service polyglot-rag-prod-api \
+  --force-new-deployment
+```
+
+### Update UI
+```bash
+# Simply run the deployment script again
+./scripts/deploy-ui-vercel.sh
+```
+
+### Update LiveKit Agent
+```bash
+cd livekit-agent
+lk cloud agent deploy
+```
+
+## Infrastructure Management
+
+### View Current State
+```bash
+cd terraform
+terraform show
+```
+
+### Destroy Infrastructure
+```bash
 cd terraform
 terraform destroy -auto-approve
-
-# Remove Docker images
-docker rmi ${DOCKER_USERNAME}/polyglot-api:latest
 ```
 
 ## Cost Optimization
 
 - ECS Fargate: ~$0.04/hour per task
-- ALB: ~$0.025/hour + data transfer
-- S3: ~$0.023/GB storage
-- CloudFront: ~$0.085/GB transfer
+- ALB: ~$0.025/hour + data transfer  
+- Vercel: Free tier includes 100GB bandwidth
 - LiveKit: Check cloud.livekit.io for pricing
 
 To reduce costs:
-- Set `desired_count = 1` in terraform for dev
-- Use t4g.nano for bastion host
-- Enable S3 lifecycle policies
-
-## Custom Domain (Optional)
-
-1. Request ACM certificate in us-east-1:
-   ```bash
-   aws acm request-certificate \
-     --domain-name polyglot-rag.com \
-     --validation-method DNS \
-     --region us-east-1
-   ```
-
-2. Update Terraform variables:
-   ```hcl
-   domain_names = ["polyglot-rag.com"]
-   certificate_arn = "arn:aws:acm:us-east-1:..."
-   ```
-
-3. Update Route53 after deployment
+- Set `desired_count = 1` in Terraform for dev
+- Use Vercel's free tier for UI hosting
+- Stop ECS tasks when not in use
 
 ## Troubleshooting
 
 ### API Not Responding
-- Check ECS task health
-- Verify security groups allow ALB traffic
-- Check Secrets Manager permissions
+- Check ALB target health in AWS Console
+- Verify ECS task is running
+- Check security groups allow traffic on port 8000
 
-### UI Not Loading
-- Verify S3 bucket policy
-- Check CloudFront distribution status
-- Clear browser cache
+### UI Connection Issues  
+- Verify API_URL and LIVEKIT_URL in deployment script
+- Check browser console for CORS errors
+- Ensure WebSocket connections are allowed
 
 ### LiveKit Connection Issues
-- Verify API keys in agent environment
-- Check CORS settings in API
-- Ensure WebSocket traffic allowed
+- Verify API keys match between services
+- Check agent deployment status: `lk cloud agent list`
+- Ensure room tokens are being generated correctly
 
-### Docker Push Fails
-- Run `docker login` manually
-- Check Docker Hub rate limits
-- Verify repository exists
+### Terraform State Issues
+- Never delete .terraform directory or terraform.tfstate
+- Use `terraform refresh` if state is out of sync
+- Keep backups of terraform.tfstate
+
+## Quick Reference
+
+```bash
+# API URL
+http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com
+
+# UI URL  
+https://polyglot-rag-bcauxftd3-axel-sirotas-projects.vercel.app
+
+# LiveKit WebSocket
+wss://polyglot-rag-assistant-3l6xagej.livekit.cloud
+
+# View all outputs
+cd terraform && terraform output
+```
 
 ## Support
 
 - LiveKit: https://docs.livekit.io
 - AWS ECS: https://docs.aws.amazon.com/ecs/
+- Vercel: https://vercel.com/docs
 - Issues: Create in GitHub repo

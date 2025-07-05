@@ -71,13 +71,13 @@ EOF
 echo "🚀 Deploying to Vercel..."
 cd $DEPLOY_DIR
 
-# Deploy to Vercel
+# Deploy to Vercel with explicit project name
 if [ -f ".vercel/project.json" ]; then
   # Production deployment if project exists
   vercel --prod --token=$VERCEL_TOKEN --yes
 else
-  # First time deployment
-  vercel --token=$VERCEL_TOKEN --yes
+  # First time deployment with explicit project name
+  vercel --name=$PROJECT_NAME --token=$VERCEL_TOKEN --yes
   vercel --prod --token=$VERCEL_TOKEN --yes
 fi
 
