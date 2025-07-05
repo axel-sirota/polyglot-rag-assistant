@@ -207,3 +207,29 @@ marimo/_lsp/
 __marimo__/
 
 CLAUDE.md
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.*
+terraform.tfvars
+terraform.auto.tfvars
+terraform/terraform.auto.tfvars
+terraform/terraform.tfvars
+terraform/terraform.tfstate
+terraform/terraform.tfstate.*
+terraform/terraform.tfstate.backup
+terraform/terraform.tfstate.backup.*
+terraform/terraform.tfstate.backup.backup
+terraform/terraform.tfstate.backup.backup.*
+terraform/terraform.tfstate.backup.backup.backup
+terraform/.terraform
+*.tfplan
+*.tfplan.*
+.terraformrc
+terraform.rc
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

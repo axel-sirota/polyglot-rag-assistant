@@ -68,30 +68,30 @@ deploy_api() {
 deploy_infrastructure() {
     print_status "Deploying AWS infrastructure with Terraform..."
     
+    # Generate terraform.auto.tfvars from .env
+    print_status "Generating Terraform variables from .env..."
+    ./scripts/generate-tfvars.sh
+    
     cd terraform
     
     # Initialize Terraform
     terraform init
     
-    # Apply Terraform
-    terraform apply -var="dockerhub_username=$DOCKER_USERNAME" -auto-approve
+    # Apply Terraform (no need to pass vars - auto.tfvars loads automatically)
+    terraform apply -auto-approve
     
     # Get outputs
     export API_URL=$(terraform output -raw api_url)
-    export S3_BUCKET=$(terraform output -raw ui_bucket_name)
-    export CLOUDFRONT_ID=$(terraform output -raw cloudfront_distribution_id)
-    export CLOUDFRONT_URL=$(terraform output -raw cloudfront_url)
     
     cd ..
     
     print_status "Infrastructure deployed ✓"
     print_status "API URL: $API_URL"
-    print_status "CloudFront URL: $CLOUDFRONT_URL"
 }
 
-# Deploy UI to S3/CloudFront
+# Deploy UI to Vercel
 deploy_ui() {
-    print_status "Deploying UI to S3/CloudFront..."
+    print_status "Deploying UI to Vercel..."
     
     # Get LiveKit URL from user or use default
     if [ -z "$LIVEKIT_URL" ]; then
@@ -99,11 +99,13 @@ deploy_ui() {
         export LIVEKIT_URL="wss://polyglot-rag-assistant.livekit.cloud"
     fi
     
-    export CLOUDFRONT_DISTRIBUTION_ID=$CLOUDFRONT_ID
+    # Load Vercel token from .env
+    source .env
+    export VERCEL_TOKEN
     
-    if [ -f "scripts/deploy-ui-s3.sh" ]; then
-        chmod +x scripts/deploy-ui-s3.sh
-        ./scripts/deploy-ui-s3.sh
+    if [ -f "scripts/deploy-ui-vercel.sh" ]; then
+        chmod +x scripts/deploy-ui-vercel.sh
+        ./scripts/deploy-ui-vercel.sh
     else
         print_error "UI deployment script not found"
         exit 1
@@ -131,14 +133,14 @@ main() {
     echo ""
     echo "✅ Deployment Complete!"
     echo "======================"
-    echo "🌐 UI: https://$CLOUDFRONT_URL"
+    echo "🌐 UI: Check Vercel dashboard for URL"
     echo "🔧 API: $API_URL"
     echo "📱 LiveKit: Deploy agent via dashboard at https://cloud.livekit.io"
     echo ""
     echo "Next steps:"
     echo "1. Deploy LiveKit agent using the dashboard"
     echo "2. Update LIVEKIT_URL in your environment"
-    echo "3. Redeploy UI with: ./scripts/deploy-ui-s3.sh"
+    echo "3. Redeploy UI with: ./scripts/deploy-ui-vercel.sh"
     echo ""
     echo "To monitor:"
     echo "- ECS logs: aws logs tail /ecs/polyglot-rag-prod/api --follow"

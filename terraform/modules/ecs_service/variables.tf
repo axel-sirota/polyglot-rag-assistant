@@ -64,8 +64,3 @@ variable "environment_variables" {
   default     = {}
 }
 
-variable "secrets" {
-  description = "Secrets from AWS Secrets Manager"
-  type        = map(string)
-  default     = {}
-}

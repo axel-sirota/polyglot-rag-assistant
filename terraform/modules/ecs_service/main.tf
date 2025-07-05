@@ -18,21 +18,7 @@ resource "aws_iam_role_policy_attachment" "task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-resource "aws_iam_role_policy" "secrets" {
-  name = "${var.project_name}-${var.environment}-${var.service_name}-secrets"
-  role = aws_iam_role.task_execution.id
-  
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "secretsmanager:GetSecretValue"
-      ]
-      Resource = values(var.secrets)
-    }]
-  })
-}
+# Secrets policy removed - using environment variables instead
 
 resource "aws_iam_role" "task" {
   name = "${var.project_name}-${var.environment}-${var.service_name}-task"
@@ -105,12 +91,7 @@ resource "aws_ecs_task_definition" "service" {
       }
     ]
     
-    secrets = [
-      for key, arn in var.secrets : {
-        name      = key
-        valueFrom = arn
-      }
-    ]
+# Secrets removed - using environment variables instead
     
     logConfiguration = {
       logDriver = "awslogs"

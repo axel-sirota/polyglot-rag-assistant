@@ -6,10 +6,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "~> 3.0"
-    }
   }
   
 }
@@ -18,13 +14,6 @@ provider "aws" {
   region = var.aws_region
 }
 
-provider "docker" {
-  registry_auth {
-    address  = "registry.hub.docker.com"
-    username = var.dockerhub_username
-    password = var.dockerhub_password
-  }
-}
 
 # VPC and Networking
 module "vpc" {
@@ -75,58 +64,15 @@ module "api_service" {
   desired_count       = 2
   
   environment_variables = {
-    PORT = "8000"
-    HOST = "0.0.0.0"
-    AMADEUS_BASE_URL = "api.amadeus.com"
-  }
-  
-  secrets = {
-    OPENAI_API_KEY        = aws_secretsmanager_secret.openai_api_key.arn
-    AMADEUS_CLIENT_ID     = aws_secretsmanager_secret.amadeus_client_id.arn
-    AMADEUS_CLIENT_SECRET = aws_secretsmanager_secret.amadeus_client_secret.arn
-    LIVEKIT_API_KEY       = aws_secretsmanager_secret.livekit_api_key.arn
-    LIVEKIT_API_SECRET    = aws_secretsmanager_secret.livekit_api_secret.arn
+    PORT                  = "8000"
+    HOST                  = "0.0.0.0"
+    AMADEUS_BASE_URL     = "api.amadeus.com"
+    OPENAI_API_KEY       = var.openai_api_key
+    AMADEUS_CLIENT_ID    = var.amadeus_client_id
+    AMADEUS_CLIENT_SECRET = var.amadeus_client_secret
+    LIVEKIT_API_KEY      = var.livekit_api_key
+    LIVEKIT_API_SECRET   = var.livekit_api_secret
   }
 }
 
-# S3 Bucket for Static UI
-module "ui_bucket" {
-  source = "./modules/s3_static_site"
-  
-  project_name = var.project_name
-  environment  = var.environment
-  domain_name  = var.ui_domain_name
-}
-
-# CloudFront for UI
-module "cloudfront" {
-  source = "./modules/cloudfront"
-  
-  project_name        = var.project_name
-  environment         = var.environment
-  s3_bucket_domain    = module.ui_bucket.bucket_regional_domain_name
-  s3_bucket_id        = module.ui_bucket.bucket_id
-  certificate_arn     = var.cloudfront_certificate_arn
-  domain_names        = [var.ui_domain_name]
-}
-
-# Secrets Manager
-resource "aws_secretsmanager_secret" "openai_api_key" {
-  name = "${var.project_name}-${var.environment}-openai-api-key"
-}
-
-resource "aws_secretsmanager_secret" "amadeus_client_id" {
-  name = "${var.project_name}-${var.environment}-amadeus-client-id"
-}
-
-resource "aws_secretsmanager_secret" "amadeus_client_secret" {
-  name = "${var.project_name}-${var.environment}-amadeus-client-secret"
-}
-
-resource "aws_secretsmanager_secret" "livekit_api_key" {
-  name = "${var.project_name}-${var.environment}-livekit-api-key"
-}
-
-resource "aws_secretsmanager_secret" "livekit_api_secret" {
-  name = "${var.project_name}-${var.environment}-livekit-api-secret"
-}
+# Note: UI deployment handled by Vercel - see scripts/deploy-ui-vercel.sh
