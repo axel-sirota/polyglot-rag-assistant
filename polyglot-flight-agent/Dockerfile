@@ -27,5 +27,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Expose health check port
 EXPOSE 8081
 
-# Run the agent in production mode
-CMD ["python", "agent.py", "start"]
+# Run the agent in dev mode to accept all jobs
+CMD ["python", "agent.py", "dev"]

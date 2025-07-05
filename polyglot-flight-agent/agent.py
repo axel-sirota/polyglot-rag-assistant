@@ -256,9 +256,9 @@ Always confirm important details like dates and destinations.""",
                 logger.error(f"Function call event error: {e}")
                 logger.info(f"🔧 Function call event: {event}")
         
-        # Handle audio track subscription
+        # Handle audio track subscription (must be sync callback)
         @ctx.room.on("track_subscribed")
-        async def on_track_subscribed(
+        def on_track_subscribed(
             track: rtc.Track, 
             publication: rtc.TrackPublication, 
             participant: rtc.RemoteParticipant
