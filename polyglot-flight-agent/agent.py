@@ -13,7 +13,7 @@ from livekit.agents import (
     Agent, AgentSession, JobContext, RunContext,
     WorkerOptions, cli, function_tool, JobProcess, AutoSubscribe
 )
-from livekit.plugins import openai, silero, deepgram, elevenlabs
+from livekit.plugins import openai, silero, deepgram, cartesia
 from livekit import rtc
 import aiohttp
 import asyncio
@@ -224,7 +224,7 @@ Always confirm important details like dates and destinations.""",
                 vad=vad,
                 stt=deepgram.STT(model="nova-3"),
                 llm=openai.LLM(model="gpt-4o-mini"),
-                tts=elevenlabs.TTS(),
+                tts=cartesia.TTS(),
                 turn_detection="vad"
             )
         
