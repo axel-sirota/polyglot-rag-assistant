@@ -19,9 +19,10 @@ docker build -t polyglot-agent:$TAG .
 
 # Test locally first as requested
 echo "🧪 Testing Docker container locally..."
-docker run --rm -d \
+docker run -d \
   --name polyglot-agent-test \
   -p 8081:8081 \
+  -p 8080:8080 \
   -e LIVEKIT_URL=$LIVEKIT_URL \
   -e LIVEKIT_API_KEY=$LIVEKIT_API_KEY \
   -e LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET \

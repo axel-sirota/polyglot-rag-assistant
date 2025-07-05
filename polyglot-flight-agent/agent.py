@@ -289,6 +289,10 @@ Always confirm important details like dates and destinations.""",
         # The agent will now handle participants joining
         logger.info(f"✅ Agent session started successfully for room {ctx.room.name}")
         
+        # Note: With OpenAI Realtime model, we cannot use session.say() 
+        # because it requires a separate TTS model. The Realtime model
+        # handles both speech input and output natively through the conversation.
+        
     except Exception as e:
         logger.error(f"❌ Error in entrypoint: {e}", exc_info=True)
         raise
@@ -299,6 +303,7 @@ if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
-            prewarm_fnc=prewarm
+            prewarm_fnc=prewarm,
+            port=8081  # Set static debug server port
         )
     )
