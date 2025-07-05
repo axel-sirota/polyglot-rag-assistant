@@ -228,18 +228,33 @@ Always confirm important details like dates and destinations.""",
                 turn_detection="vad"
             )
         
-        # Add event handlers for debugging
+        # Add event handlers for debugging with proper error handling
         @session.on("user_state_changed")
         def on_user_state_changed(event):
-            logger.info(f"👤 User state changed: {event.state}")
+            try:
+                # UserStateChangedEvent has old_state and new_state properties
+                logger.info(f"👤 User state changed: {event.old_state} -> {event.new_state}")
+            except AttributeError as e:
+                logger.error(f"User state event error: {e}")
+                logger.info(f"👤 User state event: {event}")
         
         @session.on("agent_state_changed")
         def on_agent_state_changed(event):
-            logger.info(f"🤖 Agent state changed: {event.state}")
+            try:
+                # AgentStateChangedEvent has old_state and new_state properties
+                logger.info(f"🤖 Agent state changed: {event.old_state} -> {event.new_state}")
+            except AttributeError as e:
+                logger.error(f"Agent state event error: {e}")
+                logger.info(f"🤖 Agent state event: {event}")
         
         @session.on("function_call")
         def on_function_call(event):
-            logger.info(f"🔧 Function called: {event.function_name}")
+            try:
+                # FunctionCallEvent has function_call_id and function_name
+                logger.info(f"🔧 Function called: {event.function_name} (ID: {event.function_call_id})")
+            except AttributeError as e:
+                logger.error(f"Function call event error: {e}")
+                logger.info(f"🔧 Function call event: {event}")
         
         # Handle audio track subscription
         @ctx.room.on("track_subscribed")
