@@ -256,6 +256,21 @@ Always confirm important details like dates and destinations.""",
                 logger.error(f"Function call event error: {e}")
                 logger.info(f"🔧 Function call event: {event}")
         
+        # Add handler for transcription events
+        @session.on("input_speech_transcription_completed")
+        def on_speech_transcribed(event):
+            logger.info(f"💬 User said: {getattr(event, 'text', 'unknown')}")
+        
+        # Add handler for agent speech
+        @session.on("agent_speech_committed") 
+        def on_agent_speech(event):
+            logger.info(f"🗣️ Agent speaking: {getattr(event, 'text', 'unknown')}")
+        
+        # Monitor track publishing
+        @ctx.room.on("track_published")
+        def on_track_published(publication: rtc.LocalTrackPublication, participant: rtc.LocalParticipant):
+            logger.info(f"📡 Track published: {publication.kind} by {participant.identity}")
+        
         # Handle audio track subscription (must be sync callback)
         @ctx.room.on("track_subscribed")
         def on_track_subscribed(
