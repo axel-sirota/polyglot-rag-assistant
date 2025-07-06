@@ -276,7 +276,10 @@
                     },
                     body: JSON.stringify({
                         identity: `user-${Date.now()}`,
-                        room: 'flight-demo'  // Using new room with agent metadata
+                        room: 'flight-demo',
+                        metadata: JSON.stringify({
+                            agent_request: true
+                        })
                     })
                 });
                 
@@ -314,10 +317,8 @@
                 // Enable microphone
                 await room.localParticipant.setMicrophoneEnabled(true);
                 
-                // Request agent by updating participant metadata
-                await room.localParticipant.setMetadata(JSON.stringify({ 
-                    agent_request: true 
-                }));
+                // Agent should be triggered by room creation with metadata
+                // No need to update participant metadata
                 
                 connectBtn.disabled = true;
                 disconnectBtn.disabled = false;

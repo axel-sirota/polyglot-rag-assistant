@@ -390,6 +390,7 @@ async def get_livekit_token(request: Request):
         identity = data.get("identity", f"user-{int(time.time())}")
         room_name = data.get("room", "flight-assistant")
         name = data.get("name", identity)
+        participant_metadata = data.get("metadata", "")
         
         # Get LiveKit credentials from environment
         api_key = os.getenv("LIVEKIT_API_KEY")
@@ -431,13 +432,16 @@ async def get_livekit_token(request: Request):
             identity
         ).with_name(
             name
+        ).with_metadata(
+            participant_metadata
         ).with_grants(
             api.VideoGrants(
                 room_join=True,
                 room=room_name,
                 can_publish=True,
                 can_subscribe=True,
-                can_publish_data=True
+                can_publish_data=True,
+                can_update_own_metadata=True
             )
         )
         
