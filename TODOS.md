@@ -1,9 +1,37 @@
 # Polyglot RAG Assistant - TODO Tracker
 
 ## Overview
-Fixing the Polyglot RAG repository to use OpenAI Realtime API with fallback, removing MCP dependencies, and preparing for 2-day App Store deployment.
+Fixing the LiveKit Agent audio issue and preparing for production deployment.
 
-## Phase 1: Backend Cleanup (4 hours)
+## CRITICAL - Audio Fix Implementation (Sample Rate Mismatch)
+
+### Root Cause Identified
+- TTS outputs at 24kHz, WebRTC requires 48kHz
+- LiveKit Cloud enforces strict sample rate requirements
+- See `AUDIO_FIX_IMPLEMENTATION_PLAN.md` for full details
+
+### Audio Fix Tasks
+- [ ] Install scipy for audio resampling: `pip install scipy`
+- [ ] Create `polyglot-flight-agent/audio_utils.py` with resampling functions
+- [ ] Update VAD configuration to 48kHz (currently 16kHz)
+- [ ] Create ResamplingAudioOutput class
+- [ ] Update AudioSource to 48kHz: `rtc.AudioSource(48000, 1)`
+- [ ] Add proper TrackPublishOptions with SOURCE_MICROPHONE
+- [ ] Implement test tone generator for verification
+- [ ] Add comprehensive audio pipeline logging
+- [ ] Test with both test tone and actual TTS
+- [ ] Verify audio is audible in browser
+
+### Testing Sequence
+1. [ ] Test manual 440Hz tone at 48kHz
+2. [ ] Verify tone is audible
+3. [ ] Test TTS with resampling
+4. [ ] Monitor WebRTC stats for audio levels
+5. [ ] Confirm consistent audio output
+
+## Previous Work Completed
+
+### Phase 1: Backend Cleanup (4 hours)
 - [x] Remove MCP dependencies and fix imports
   - [x] Delete mcp_servers/flight_search_server.py
   - [x] Delete mcp_servers/mcp_config.json
@@ -53,19 +81,32 @@ Fixing the Polyglot RAG repository to use OpenAI Realtime API with fallback, rem
 ## Current Status
 Completed Phases 1-3, simplified dependencies. Ready for mobile app development and production deployment.
 
-## Summary
-- ✅ Removed all MCP dependencies
-- ✅ Implemented OpenAI Realtime API with fallback
-- ✅ Created FastAPI backend with WebSocket support
-- ✅ Updated web interface for real-time voice
-- ✅ Simplified requirements.txt (37 → 7 dependencies)
-- ✅ Cleaned up root directory scripts
-- ✅ Created simple deployment guide in local_test_setup.md
-- ✅ Created unified api_server.py entry point
-- 📱 Next: React Native Expo app for App Store submission
+## LiveKit Agent Work
 
-## Final Cleanup Completed
-- Simplified project structure
-- Removed confusing/redundant scripts
-- Clear 2-command startup process
-- Comprehensive deployment documentation
+### Completed
+- ✅ Implemented LiveKit Agent with STT-LLM-TTS pipeline
+- ✅ Integrated flight search API functionality
+- ✅ Added multilingual support
+- ✅ Downgraded to LiveKit 1.0.23 (didn't fix audio)
+- ✅ Identified root cause: Sample rate mismatch (24kHz vs 48kHz)
+- ✅ Created comprehensive debugging documentation
+
+### Audio Issues Discovered
+- ❌ No audio output despite successful track publishing
+- ❌ Audio track exists but is silent/empty
+- ❌ Issue persists in both LiveKit 1.1.5 and 1.0.23
+- ✅ Root cause: TTS outputs 24kHz, WebRTC requires 48kHz
+- ✅ Solution ready: Audio resampling implementation
+
+## Summary of Current State
+- LiveKit agent connects and publishes audio track
+- Browser subscribes to audio track successfully
+- But audio is silent due to sample rate mismatch
+- Implementation plan ready in `AUDIO_FIX_IMPLEMENTATION_PLAN.md`
+- Once audio fix is applied, agent will be fully functional
+
+## Next Steps Priority
+1. **Fix audio output** - Implement resampling solution
+2. **Test thoroughly** - Verify audio works consistently
+3. **Deploy to production** - LiveKit Cloud deployment
+4. **Mobile app** - If needed for demo
