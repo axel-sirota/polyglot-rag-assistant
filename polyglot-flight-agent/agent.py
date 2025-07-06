@@ -295,15 +295,7 @@ async def entrypoint(ctx: JobContext):
             except:
                 pass
                 
-        # Check participant metadata when they join
-        for participant in ctx.room.participants.values():
-            if participant.metadata:
-                try:
-                    participant_metadata = json.loads(participant.metadata)
-                    language = participant_metadata.get("language", language)
-                    logger.info(f"Language from participant {participant.identity}: {language}")
-                except:
-                    pass
+        # We'll get participant metadata when they join via events
         
         # Test tone option - DISABLED (was causing weird audio)
         # logger.info("🔊 Playing test tone to verify audio...")
