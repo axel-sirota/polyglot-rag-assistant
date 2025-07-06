@@ -229,6 +229,11 @@ EXECUTIVE_SUMMARY.md
 .vercel/
 web-app/.vercel/
 
+# LiveKit credentials
+.livekit
+livekit-agent/.livekit
+polyglot-flight-agent/.livekit
+
 # Terraform
 *.tfstate
 *.tfstate.*
