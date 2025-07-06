@@ -8,9 +8,11 @@ export default async function handler(req, res) {
   const apiUrl = process.env.API_URL || 'http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com/api/livekit/token';
   
   try {
-    // Add agent metadata to the request
+    // Forward the request with room metadata for agent dispatch
     const requestBody = {
       ...req.body,
+      // Keep the participant metadata from the UI (contains language)
+      metadata: req.body.metadata,
       // Set room metadata to trigger agent dispatch
       roomMetadata: JSON.stringify({
         require_agent: true,

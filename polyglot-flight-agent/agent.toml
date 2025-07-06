@@ -4,7 +4,7 @@ name = "Polyglot Flight Assistant"
 worker_type = "process"
 
 [agent.worker_options]
-num_idle_processes = 1
+num_idle_processes = 3
 
 [agent.environment]
 API_SERVER_URL = "http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com"
