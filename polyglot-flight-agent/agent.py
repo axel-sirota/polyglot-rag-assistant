@@ -364,9 +364,8 @@ DATE HANDLING:
                 vad=vad,
                 stt=deepgram.STT(
                     model="nova-3",
-                    # Remove language parameter to enable auto-detection
-                    # Deepgram Nova 3 supports 40+ languages with auto-detection
-                    detect_language=True,  # Enable language detection
+                    # Nova-3 supports 40+ languages automatically
+                    # No need for explicit language detection in streaming mode
                     sample_rate=48000  # Match WebRTC requirement
                 ),
                 llm=openai.LLM(
