@@ -208,6 +208,27 @@ __marimo__/
 
 CLAUDE.md
 
+# Large files and test data
+*.har
+webrtc_internals_dump*.txt
+testing/
+flagged/
+
+# Logs (already covered by *.log but being explicit)
+logs/
+agent.log
+api_server.log
+web_server.log
+http_server.log
+polyglot-flight-agent/agent.log
+
+# Executive summary (gitignored as per instructions)
+EXECUTIVE_SUMMARY.md
+
+# Vercel
+.vercel/
+web-app/.vercel/
+
 # Terraform
 *.tfstate
 *.tfstate.*
