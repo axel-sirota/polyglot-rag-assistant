@@ -40,8 +40,7 @@ class FlightSearchRequest(BaseModel):
 class FlightSearchServer:
     def __init__(self):
         self.serpapi_key = os.getenv("SERPAPI_API_KEY")
-        self.aviationstack_key = os.getenv("AVIATIONSTACK_API_KEY")
-        self.browserless_key = os.getenv("BROWSERLESS_IO_API_KEY")
+        self.serper_key = os.getenv("SERPER_API_KEY")  # Serper.dev for Google search
         self.http_client = httpx.AsyncClient()
         # Initialize Amadeus SDK
         self.amadeus_search = AmadeusSDKFlightSearch()
@@ -556,19 +555,21 @@ class FlightSearchServer:
                 timeout=10.0
             ))
             
-            # Always try AviationStack for additional data
-            if self.aviationstack_key:
+            # AviationStack removed - not working properly
+            
+            # Try Serper.dev for Google search
+            if self.serper_key:
                 tasks.append(self._search_with_timeout(
-                    self._search_flights_aviationstack(
+                    self._search_flights_serper(
                         origin_code, dest_code, departure_date,
-                        return_date, passengers, cabin_class
+                        preferred_airline, passengers, cabin_class
                     ),
-                    "AviationStack",
+                    "Serper",
                     timeout=8.0
                 ))
             
-            # Always try SerpAPI for better coverage
-            if self.serpapi_key:
+            # Always try SerpAPI for better coverage (if we have a valid key)
+            if self.serpapi_key and self.serpapi_key != self.serper_key:
                 tasks.append(self._search_with_timeout(
                     self._search_flights_serpapi(
                         origin_code, dest_code, departure_date,
@@ -578,16 +579,7 @@ class FlightSearchServer:
                     timeout=8.0
                 ))
             
-            # Always try Browserless for Google Flights scraping
-            if self.browserless_key:
-                tasks.append(self._search_with_timeout(
-                    self._search_google_flights_browserless(
-                        origin_code, dest_code, departure_date,
-                        preferred_airline, passengers, cabin_class
-                    ),
-                    "Browserless",
-                    timeout=10.0
-                ))
+            # Browserless.io removed - not working properly
             
             # Run all searches in parallel
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -596,7 +588,13 @@ class FlightSearchServer:
             all_flights = []
             for i, result in enumerate(results):
                 if isinstance(result, list) and result:
-                    source = ["Amadeus", "AviationStack", "SerpAPI"][i] if i < 3 else "Unknown"
+                    # Map index to source based on order of tasks
+                    source_mapping = {
+                        0: "Amadeus",
+                        1: "Serper",
+                        2: "SerpAPI"
+                    }
+                    source = source_mapping.get(i, "Unknown")
                     logger.info(f"{source} returned {len(result)} flights")
                     # Add source to each flight
                     for flight in result:
@@ -672,12 +670,6 @@ class FlightSearchServer:
                     if flight.get('data_source') == 'Amadeus' and existing.get('data_source') != 'Amadeus':
                         # Amadeus data is usually most complete
                         existing.update({k: v for k, v in flight.items() if v and not existing.get(k)})
-                    elif flight.get('data_source') == 'AviationStack':
-                        # AviationStack has good real-time data
-                        for key in ['departure_terminal', 'arrival_terminal', 'departure_gate', 'arrival_gate', 
-                                   'aircraft_registration', 'flight_status']:
-                            if flight.get(key) and not existing.get(key):
-                                existing[key] = flight[key]
                     elif flight.get('data_source') == 'SerpAPI':
                         # SerpAPI might have better pricing
                         if flight.get('price') and not existing.get('price'):
@@ -687,9 +679,19 @@ class FlightSearchServer:
                 enriched.append(flight)
         
         # Sort by departure time and price
+        def get_price_value(flight):
+            price = str(flight.get('price', '999999'))
+            # Extract numeric value from price string
+            price_num = re.sub(r'[^\d.]', '', price)
+            # Handle empty strings or non-numeric prices
+            try:
+                return float(price_num) if price_num else 999999
+            except ValueError:
+                return 999999
+        
         enriched.sort(key=lambda f: (
             f.get('departure_time', 'ZZZ'),
-            float(re.sub(r'[^\d.]', '', str(f.get('price', '999999'))))
+            get_price_value(f)
         ))
         
         return enriched
@@ -716,53 +718,129 @@ class FlightSearchServer:
     
     async def get_flight_details(self, flight_id: str) -> Dict[str, Any]:
         """Get detailed information about a specific flight"""
-        # Try to get real flight details from APIs
-        if self.aviationstack_key:
-            try:
-                # AviationStack flight status endpoint
-                params = {
-                    "access_key": self.aviationstack_key,
-                    "flight_iata": flight_id
-                }
-                response = await self.http_client.get(
-                    "http://api.aviationstack.com/v1/flights",
-                    params=params
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("data"):
-                        flight = data["data"][0]
-                        return {
-                            "flight_id": flight_id,
-                            "airline": flight.get("airline", {}).get("name"),
-                            "flight_number": flight.get("flight", {}).get("iata"),
-                            "status": flight.get("flight_status"),
-                            "departure": {
-                                "airport": flight.get("departure", {}).get("airport"),
-                                "terminal": flight.get("departure", {}).get("terminal"),
-                                "gate": flight.get("departure", {}).get("gate"),
-                                "scheduled": flight.get("departure", {}).get("scheduled"),
-                                "actual": flight.get("departure", {}).get("actual")
-                            },
-                            "arrival": {
-                                "airport": flight.get("arrival", {}).get("airport"),
-                                "terminal": flight.get("arrival", {}).get("terminal"),
-                                "gate": flight.get("arrival", {}).get("gate"),
-                                "scheduled": flight.get("arrival", {}).get("scheduled"),
-                                "actual": flight.get("arrival", {}).get("actual")
-                            },
-                            "aircraft": flight.get("aircraft", {}).get("registration"),
-                            "live": flight.get("live", {})
-                        }
-            except Exception as e:
-                logger.warning(f"Failed to get flight details from AviationStack: {e}")
-        
-        # If no API available or failed, return minimal info
+        # Return minimal info - real-time flight tracking requires paid APIs
         return {
             "flight_id": flight_id,
             "error": "Unable to retrieve live flight details",
             "note": "Please check with the airline for current flight status"
         }
+    
+    async def _search_flights_serper(
+        self, origin: str, destination: str, departure_date: str,
+        airline: Optional[str], passengers: int, cabin_class: str
+    ) -> List[Dict[str, Any]]:
+        """Search flights using Serper.dev Google Search API"""
+        try:
+            # Build search query
+            query_parts = [
+                f"flights from {origin} to {destination}",
+                f"on {departure_date}",
+                cabin_class if cabin_class != "economy" else "",
+                f"{airline} airlines" if airline else "",
+                "prices schedule"
+            ]
+            query = " ".join(filter(None, query_parts))
+            
+            logger.info(f"Searching with Serper.dev: {query}")
+            
+            # Serper.dev API endpoint
+            url = "https://google.serper.dev/search"
+            
+            headers = {
+                "X-API-KEY": self.serper_key,
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "q": query,
+                "num": 20,
+                "gl": "us",
+                "hl": "en"
+            }
+            
+            response = await self.http_client.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=10.0
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return self._parse_serper_results(data, origin, destination, departure_date, airline)
+            else:
+                logger.error(f"Serper error: {response.status_code} - {response.text}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Serper search error: {e}")
+            return []
+    
+    def _parse_serper_results(self, data: Dict, origin: str, destination: str, date: str, airline: Optional[str]) -> List[Dict[str, Any]]:
+        """Parse Serper.dev search results for flight information"""
+        flights = []
+        
+        try:
+            # Check organic results for flight information
+            organic = data.get("organic", [])
+            
+            for result in organic[:10]:
+                title = result.get("title", "").lower()
+                snippet = result.get("snippet", "")
+                link = result.get("link", "")
+                
+                # Look for flight-related results
+                if any(word in title for word in ["flight", "airline", "travel", "cheap", "book"]):
+                    # Try to extract price from snippet
+                    import re
+                    price_match = re.search(r'\$(\d+(?:,\d+)?)', snippet)
+                    price = f"${price_match.group(1)}" if price_match else "Check website"
+                    
+                    # Extract airline if mentioned
+                    flight_airline = "Multiple Airlines"
+                    for known_airline in ["Delta", "United", "American", "Southwest", "JetBlue", "Alaska", "Spirit", "Frontier"]:
+                        if known_airline.lower() in snippet.lower():
+                            flight_airline = known_airline + " Airlines"
+                            break
+                    
+                    # Skip if we're filtering by airline and this doesn't match
+                    if airline and airline.lower() not in flight_airline.lower():
+                        continue
+                    
+                    flight = {
+                        "airline": flight_airline,
+                        "price": price,
+                        "departure_airport": origin,
+                        "arrival_airport": destination,
+                        "departure_date": date,
+                        "source": "Google Search (via Serper)",
+                        "data_source": "Serper",
+                        "booking_link": link,
+                        "description": snippet[:200]
+                    }
+                    flights.append(flight)
+            
+            # Also check answer box if available
+            answer_box = data.get("answerBox", {})
+            if answer_box:
+                answer = answer_box.get("answer", "")
+                if "$" in answer:
+                    flights.insert(0, {
+                        "airline": "Various Airlines",
+                        "price": answer,
+                        "departure_airport": origin,
+                        "arrival_airport": destination,
+                        "departure_date": date,
+                        "source": "Google Answer Box (via Serper)",
+                        "description": "Best price found"
+                    })
+            
+            logger.info(f"Parsed {len(flights)} flights from Serper results")
+            return flights
+            
+        except Exception as e:
+            logger.error(f"Error parsing Serper results: {e}")
+            return []
     
     async def _search_flights_serpapi(
         self, origin: str, destination: str, departure_date: str,
@@ -801,34 +879,6 @@ class FlightSearchServer:
             logger.error(f"SerpAPI error: {response.status_code} - {response.text}")
             raise Exception(f"SerpAPI error: {response.status_code}")
     
-    async def _search_flights_aviationstack(
-        self, origin: str, destination: str, departure_date: str,
-        return_date: Optional[str], passengers: int, cabin_class: str
-    ) -> List[Dict[str, Any]]:
-        """Search flights using Aviationstack API"""
-        params = {
-            "access_key": self.aviationstack_key,
-            "dep_iata": origin,
-            "arr_iata": destination,
-            "flight_date": departure_date,
-            "limit": 10
-        }
-        
-        # Use proper endpoint for future flights
-        endpoint = "http://api.aviationstack.com/v1/flightsFuture"
-        if departure_date == datetime.now().strftime("%Y-%m-%d"):
-            endpoint = "http://api.aviationstack.com/v1/flights"
-            
-        response = await self.http_client.get(
-            endpoint,
-            params=params
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            return self._parse_aviationstack_results(data, passengers, cabin_class)
-        else:
-            raise Exception(f"Aviationstack error: {response.status_code}")
     
     def _parse_serpapi_results(self, data: Dict) -> List[Dict[str, Any]]:
         """Parse SerpAPI Google Flights results into standard format"""
@@ -885,65 +935,6 @@ class FlightSearchServer:
         logger.info(f"Found {len(flights)} flights from SerpAPI")
         return flights
     
-    def _parse_aviationstack_results(
-        self, data: Dict, passengers: int, cabin_class: str
-    ) -> List[Dict[str, Any]]:
-        """Parse Aviationstack results into standard format"""
-        flights = []
-        
-        if "data" in data and data["data"]:
-            for flight in data["data"]:
-                try:
-                    # Extract all available real data
-                    departure = flight.get("departure", {})
-                    arrival = flight.get("arrival", {})
-                    airline = flight.get("airline", {})
-                    flight_info = flight.get("flight", {})
-                    aircraft = flight.get("aircraft", {})
-                    live = flight.get("live", {})
-                    
-                    flight_record = {
-                        "airline": airline.get("name", "Unknown"),
-                        "airline_iata": airline.get("iata", ""),
-                        "flight_number": flight_info.get("iata", ""),
-                        "flight_icao": flight_info.get("icao", ""),
-                        "departure_airport": departure.get("airport", ""),
-                        "departure_iata": departure.get("iata", ""),
-                        "departure_time": departure.get("scheduled", ""),
-                        "departure_actual": departure.get("actual", ""),
-                        "departure_terminal": departure.get("terminal", ""),
-                        "departure_gate": departure.get("gate", ""),
-                        "arrival_airport": arrival.get("airport", ""),
-                        "arrival_iata": arrival.get("iata", ""),
-                        "arrival_time": arrival.get("scheduled", ""),
-                        "arrival_actual": arrival.get("actual", ""),
-                        "arrival_terminal": arrival.get("terminal", ""),
-                        "arrival_gate": arrival.get("gate", ""),
-                        "flight_status": flight.get("flight_status", ""),
-                        "aircraft_registration": aircraft.get("registration", ""),
-                        "aircraft_iata": aircraft.get("iata", ""),
-                        "duration": self._calculate_duration(
-                            departure.get("scheduled"),
-                            arrival.get("scheduled")
-                        ),
-                        "distance": live.get("distance", ""),
-                        "is_live": live.get("is_ground", False),
-                        "speed": live.get("speed_horizontal", ""),
-                        "altitude": live.get("altitude", ""),
-                        "direction": live.get("direction", ""),
-                        "note": "Real-time flight data from AviationStack"
-                    }
-                    
-                    # Only add if we have essential info
-                    if flight_record["departure_time"] and flight_record["arrival_time"]:
-                        flights.append(flight_record)
-                        
-                except Exception as e:
-                    logger.debug(f"Error parsing AviationStack flight: {e}")
-                    continue
-        
-        logger.info(f"Parsed {len(flights)} flights from AviationStack")
-        return flights
     
     async def _get_real_time_prices(self, origin: str, destination: str, date: str, passengers: int = 1) -> Optional[Dict[str, Any]]:
         """Try to get real-time flight prices from SerpAPI"""
@@ -987,6 +978,14 @@ class FlightSearchServer:
             return f"{hours}h {minutes}m"
         except:
             return "N/A"
+    
+    def _format_datetime(self, dt_str: str) -> str:
+        """Format datetime string to readable format"""
+        try:
+            dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+            return dt.strftime("%H:%M")
+        except:
+            return dt_str
     
     async def _get_mock_flights(
         self, origin: str, destination: str, departure_date: str,
@@ -1167,234 +1166,8 @@ class FlightSearchServer:
         
         return filtered
     
-    async def _search_google_flights_browserless(
-        self, origin: str, destination: str, departure_date: str,
-        airline: Optional[str], passengers: int, cabin_class: str
-    ) -> List[Dict[str, Any]]:
-        """Use Browserless.io to scrape Google Flights directly"""
-        try:
-            # Build Google Flights URL
-            base_url = "https://www.google.com/travel/flights/search"
-            
-            # Map cabin class to Google's format
-            cabin_map = {
-                "economy": "1",
-                "premium_economy": "2", 
-                "business": "3",
-                "first": "4"
-            }
-            cabin_code = cabin_map.get(cabin_class.lower(), "1")
-            
-            # Format date for Google (YYYY-MM-DD works)
-            params = {
-                "f": origin,           # from
-                "t": destination,      # to
-                "d": departure_date,   # departure date
-                "tt": "o",            # trip type: o=one-way
-                "c": cabin_code,      # cabin class
-                "px": passengers,     # passengers
-                "curr": "USD"         # currency
-            }
-            
-            # Build URL with parameters
-            query_string = "&".join([f"{k}={v}" for k, v in params.items()])
-            search_url = f"{base_url}?{query_string}"
-            
-            logger.info(f"Scraping Google Flights via Browserless: {search_url}")
-            
-            # Browserless.io endpoint
-            endpoint = f"https://production-sfo.browserless.io/scrape?token={self.browserless_key}"
-            
-            # Scraping configuration for Google Flights
-            payload = {
-                "url": search_url,
-                "elements": [
-                    {
-                        "selector": "[jsname='BVAVmf']",  # Flight results container
-                        "timeout": 15000
-                    }
-                ],
-                "waitForSelector": "[jsname='BVAVmf']",
-                "waitForTimeout": 5000,
-                "screenshot": False
-            }
-            
-            response = await self.http_client.post(
-                endpoint,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=20.0
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                flights = []
-                
-                if data.get("data") and len(data["data"]) > 0:
-                    html = data["data"][0].get("html", "")
-                    # Parse Google Flights HTML
-                    flights = self._parse_google_flights_html(html, airline)
-                    logger.info(f"Scraped {len(flights)} flights from Google Flights")
-                
-                return flights
-            else:
-                logger.error(f"Browserless error: {response.status_code}")
-                return []
-                
-        except Exception as e:
-            logger.error(f"Google Flights scraping error: {e}")
-            return []
     
-    def _parse_google_flights_html(self, html: str, preferred_airline: Optional[str]) -> List[Dict[str, Any]]:
-        """Parse Google Flights HTML to extract flight information"""
-        flights = []
-        
-        try:
-            # This is a simplified parser - Google Flights HTML is complex
-            # Look for patterns in the HTML
-            import re
-            
-            # Pattern to find airline names
-            airline_pattern = r'<span[^>]*>([A-Za-z\s]+(?:Airlines?|Airways?))</span>'
-            airlines = re.findall(airline_pattern, html)
-            
-            # Pattern to find prices (USD)
-            price_pattern = r'\$([0-9,]+)'
-            prices = re.findall(price_pattern, html)
-            
-            # Pattern to find times
-            time_pattern = r'(\d{1,2}:\d{2}\s*[APap][Mm])'
-            times = re.findall(time_pattern, html)
-            
-            # Pattern to find flight duration
-            duration_pattern = r'(\d+h\s*\d*m?)'
-            durations = re.findall(duration_pattern, html)
-            
-            # Try to extract structured data
-            # Google often includes JSON-LD or structured data
-            json_pattern = r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>'
-            json_matches = re.findall(json_pattern, html, re.DOTALL)
-            
-            # Combine extracted data into flight records
-            # This is approximate - real parsing would need more sophisticated logic
-            for i in range(min(len(airlines), len(prices))):
-                airline = airlines[i] if i < len(airlines) else "Unknown"
-                price = prices[i] if i < len(prices) else "N/A"
-                
-                # If filtering by airline and this isn't a match, skip
-                if preferred_airline and preferred_airline.lower() not in airline.lower():
-                    continue
-                
-                flight = {
-                    "airline": airline,
-                    "price": f"${price}",
-                    "departure_time": times[i*2] if i*2 < len(times) else "TBD",
-                    "arrival_time": times[i*2+1] if i*2+1 < len(times) else "TBD",
-                    "duration": durations[i] if i < len(durations) else "N/A",
-                    "source": "Google Flights (via Browserless)",
-                    "booking_note": "Visit Google Flights to book"
-                }
-                flights.append(flight)
-            
-            # Limit results
-            return flights[:10]
-            
-        except Exception as e:
-            logger.error(f"Error parsing Google Flights HTML: {e}")
-            return []
     
-    async def _search_flights_browserless(
-        self, origin: str, destination: str, departure_date: str,
-        airline: str, passengers: int, cabin_class: str
-    ) -> List[Dict[str, Any]]:
-        """Use Browserless.io to scrape airline website directly"""
-        # Map airline names to websites
-        airline_urls = {
-            "american airlines": "https://www.aa.com",
-            "american": "https://www.aa.com",
-            "aa": "https://www.aa.com",
-            "united": "https://www.united.com", 
-            "united airlines": "https://www.united.com",
-            "ua": "https://www.united.com",
-            "delta": "https://www.delta.com",
-            "delta airlines": "https://www.delta.com",
-            "dl": "https://www.delta.com",
-            "southwest": "https://www.southwest.com",
-            "southwest airlines": "https://www.southwest.com",
-            "wn": "https://www.southwest.com",
-            "jetblue": "https://www.jetblue.com",
-            "b6": "https://www.jetblue.com",
-            "spirit": "https://www.spirit.com",
-            "nk": "https://www.spirit.com",
-            "frontier": "https://www.flyfrontier.com",
-            "f9": "https://www.flyfrontier.com",
-            "alaska": "https://www.alaskaair.com",
-            "alaska airlines": "https://www.alaskaair.com",
-            "as": "https://www.alaskaair.com"
-        }
-        
-        airline_lower = airline.lower()
-        airline_url = airline_urls.get(airline_lower)
-        
-        if not airline_url:
-            logger.warning(f"No website mapping for airline: {airline}")
-            return []
-        
-        try:
-            # Browserless.io endpoint
-            endpoint = f"https://production-sfo.browserless.io/scrape?token={self.browserless_key}"
-            
-            # Build search URL (this is a generic approach, specific airlines may need custom URLs)
-            search_url = f"{airline_url}/flight-search?origin={origin}&destination={destination}&date={departure_date}&passengers={passengers}"
-            
-            # Scraping configuration
-            payload = {
-                "url": search_url,
-                "elements": [
-                    {
-                        "selector": "[class*='flight-result'], [class*='flight-option'], [data-test*='flight']",
-                        "timeout": 10000
-                    }
-                ],
-                "waitForTimeout": 5000,
-                "screenshot": False
-            }
-            
-            response = await self.http_client.post(
-                endpoint,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=30.0
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                flights = []
-                
-                if data.get("data"):
-                    # Parse the scraped HTML elements
-                    for element in data["data"]:
-                        html = element.get("html", "")
-                        # Basic parsing - this would need to be customized per airline
-                        if "price" in html.lower() and ("am" in html.lower() or "pm" in html.lower()):
-                            # Extract basic flight info from HTML
-                            flight = {
-                                "airline": airline,
-                                "flight_number": f"{airline_lower.upper()[:2]}XXX",  # Placeholder
-                                "departure_time": "TBD",
-                                "arrival_time": "TBD", 
-                                "price": "Check airline website",
-                                "departure_airport": origin,
-                                "arrival_airport": destination,
-                                "note": f"Scraped from {airline} website - visit {airline_url} for booking"
-                            }
-                            flights.append(flight)
-                
-                return flights[:5]  # Return up to 5 results
-                
-        except Exception as e:
-            logger.error(f"Browserless.io scraping error: {e}")
-            return []
 
 # Create server instance
 server = FlightSearchServer()
