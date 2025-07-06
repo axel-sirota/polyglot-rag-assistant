@@ -23,6 +23,14 @@
         "value": "${openai_api_key}"
       },
       {
+        "name": "DEEPGRAM_API_KEY",
+        "value": "${deepgram_api_key}"
+      },
+      {
+        "name": "CARTESIA_API_KEY",
+        "value": "${cartesia_api_key}"
+      },
+      {
         "name": "API_SERVER_URL",
         "value": "${api_server_url}"
       }

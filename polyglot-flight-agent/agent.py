@@ -139,34 +139,41 @@ async def search_flights(
                 response_parts = []
                 
                 if nonstop_flights:
-                    response_parts.append("**Nonstop flights:**")
+                    response_parts.append("Non stop flights:")
                     for flight in nonstop_flights[:5]:
                         response_parts.append(
-                            f"• {flight['airline']} - {flight['price']} "
-                            f"(departs {flight['departure_time']}, arrives {flight.get('arrival_time', 'TBD')})"
+                            f"- Airline: {flight['airline']}, Price: {flight['price']}"
                         )
                 
                 if connecting_flights:
                     if nonstop_flights:
-                        response_parts.append("\n**Flights with stops (ordered by price):**")
+                        response_parts.append("\nFlights with layover:")
                     else:
-                        response_parts.append("**Flights with stops (ordered by price):**")
+                        response_parts.append("Flights with layover:")
                     
                     # Sort by price
                     connecting_sorted = sorted(connecting_flights, key=get_price)[:10]
                     for flight in connecting_sorted:
-                        layover_info = flight.get('layovers', f"{flight.get('stops', 1)} stop(s)")
+                        # Format stops information
+                        stops_info = ""
+                        if 'layovers' in flight and flight['layovers']:
+                            stops_info = f", stops: {flight['layovers']}"
+                        elif 'stops' in flight:
+                            stops_info = f", {flight['stops']} stop(s)"
+                        
                         response_parts.append(
-                            f"• {flight['airline']} - {flight['price']}, "
-                            f"{flight.get('duration', 'TBD')} total, {layover_info}"
+                            f"- Airline: {flight['airline']}, price: {flight['price']}, "
+                            f"duration: {flight.get('duration', 'TBD')}{stops_info}"
                         )
                 
                 # Add airline-specific message
                 airline_msg = ""
                 if preferred_airline and not airline_found:
-                    airline_msg = f"I couldn't find any {preferred_airline} flights on this route. Here are alternative options:\n\n"
+                    airline_msg = f"I couldn't find any {preferred_airline} flights on this route. Here are alternative options. "
                 elif preferred_airline and airline_found:
-                    airline_msg = f"Found {preferred_airline} flights:\n\n"
+                    airline_msg = f"I found {preferred_airline} flights. "
+                else:
+                    airline_msg = "I found these flights:\n\n"
                 
                 # Build final message
                 final_message = airline_msg + "\n".join(response_parts)
@@ -399,6 +406,8 @@ CONVERSATION STYLE:
 - When presenting flights, list ALL options clearly, not just top 3
 - Ask if they want to filter results when there are many options
 - If user switches languages mid-conversation, continue responding but acknowledge the switch
+- NEVER use markdown formatting like asterisks (*), hashes (#), or any other markdown symbols
+- Your responses will be spoken aloud, so format them as natural speech only
 
 You can search for real flights using the search_flights function.
 Always confirm important details like dates and destinations.

@@ -66,10 +66,16 @@ module "api_service" {
   environment_variables = {
     PORT                  = "8000"
     HOST                  = "0.0.0.0"
-    AMADEUS_BASE_URL     = "api.amadeus.com"
     OPENAI_API_KEY       = var.openai_api_key
+    ANTHROPIC_API_KEY    = var.anthropic_api_key
+    DEEPGRAM_API_KEY     = var.deepgram_api_key
+    CARTESIA_API_KEY     = var.cartesia_api_key
+    AMADEUS_BASE_URL     = var.amadeus_base_url
     AMADEUS_CLIENT_ID    = var.amadeus_client_id
     AMADEUS_CLIENT_SECRET = var.amadeus_client_secret
+    SERPER_API_KEY       = var.serper_api_key
+    SERPAPI_API_KEY      = var.serpapi_api_key
+    LIVEKIT_URL          = var.livekit_url
     LIVEKIT_API_KEY      = var.livekit_api_key
     LIVEKIT_API_SECRET   = var.livekit_api_secret
   }
@@ -98,6 +104,8 @@ module "agent_service" {
     LIVEKIT_API_KEY      = var.livekit_api_key
     LIVEKIT_API_SECRET   = var.livekit_api_secret
     OPENAI_API_KEY       = var.openai_api_key
+    DEEPGRAM_API_KEY     = var.deepgram_api_key
+    CARTESIA_API_KEY     = var.cartesia_api_key
     API_SERVER_URL       = "http://${module.alb.alb_dns_name}"
   }
 }

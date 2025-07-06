@@ -24,12 +24,26 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
-# Create .env file mount point
-VOLUME ["/app/.env"]
-
-# Set environment variables
+# Set environment variables that can be overridden
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
-# Default command to run the agent
-CMD ["python", "agent.py"]
+# LiveKit environment variables (will be overridden by ECS/docker-compose)
+ENV LIVEKIT_URL=""
+ENV LIVEKIT_API_KEY=""
+ENV LIVEKIT_API_SECRET=""
+
+# OpenAI environment variables
+ENV OPENAI_API_KEY=""
+
+# Deepgram environment variables
+ENV DEEPGRAM_API_KEY=""
+
+# Cartesia environment variables
+ENV CARTESIA_API_KEY=""
+
+# API Server URL - defaults to ECS production ALB
+ENV API_SERVER_URL="http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com"
+
+# Default command to run the agent in start mode
+CMD ["python", "agent.py", "start"]

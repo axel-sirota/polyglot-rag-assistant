@@ -9,3 +9,6 @@ livekit-plugins-turn-detector~=1.0
 livekit-plugins-noise-cancellation>=0.2.0,<1.0.0
 python-dotenv~=1.0
 aiohttp>=3.8.0
+httpx>=0.24.0
+numpy>=1.24.0
+scipy>=1.10.0

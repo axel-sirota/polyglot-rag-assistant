@@ -100,3 +100,39 @@ variable "livekit_api_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key"
+  type        = string
+  sensitive   = true
+}
+
+variable "deepgram_api_key" {
+  description = "Deepgram API key"
+  type        = string
+  sensitive   = true
+}
+
+variable "cartesia_api_key" {
+  description = "Cartesia API key"
+  type        = string
+  sensitive   = true
+}
+
+variable "amadeus_base_url" {
+  description = "Amadeus API base URL"
+  type        = string
+  default     = "api.amadeus.com"
+}
+
+variable "serper_api_key" {
+  description = "Serper.dev API key"
+  type        = string
+  sensitive   = true
+}
+
+variable "serpapi_api_key" {
+  description = "SerpAPI API key"
+  type        = string
+  sensitive   = true
+}
