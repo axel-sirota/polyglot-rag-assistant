@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Polyglot Flight Assistant - LiveKit</title>
+    <title>Polyglot Flight Assistant - LiveKit Local</title>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
     <style>
         :root {
@@ -216,6 +216,23 @@
         .info strong {
             color: var(--primary-color);
         }
+        
+        .audio-controls {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+        }
+        
+        .audio-controls.visible {
+            display: block;
+        }
+        
+        #remoteAudio {
+            width: 100%;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -223,7 +240,7 @@
         <h1>🌍 Polyglot Flight Assistant</h1>
         
         <div class="info">
-            <strong>Powered by LiveKit Cloud</strong> - Speak in any language to search for flights!
+            <strong>Local Development Mode</strong> - Speak in any language to search for flights!
         </div>
         
         <div id="status" class="status disconnected">
@@ -245,10 +262,15 @@
                 Click "Connect" to start. Then speak naturally in any language!
             </div>
         </div>
+        
+        <div id="audioControls" class="audio-controls">
+            <div class="message-label">Agent Audio:</div>
+            <audio id="remoteAudio" controls></audio>
+        </div>
     </div>
 
     <script>
-        // LiveKit configuration
+        // LiveKit configuration - using local API server
         const LIVEKIT_URL = 'wss://polyglot-rag-assistant-3l6xagej.livekit.cloud';
         const API_URL = 'http://localhost:8000';
         
@@ -262,29 +284,37 @@
         const disconnectBtn = document.getElementById('disconnectBtn');
         const transcriptEl = document.getElementById('transcript');
         const audioLevelEl = document.getElementById('audioLevel');
+        const audioControlsEl = document.getElementById('audioControls');
+        const remoteAudioEl = document.getElementById('remoteAudio');
         
         async function connect() {
             updateStatus('Connecting...', 'connecting');
             connectBtn.disabled = true;
             
             try {
-                // Get a token from our backend
-                const response = await fetch('/api/livekit-token', {
+                // Get a token from our local backend
+                const response = await fetch(`${API_URL}/api/livekit/token`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         identity: `user-${Date.now()}`,
-                        room: 'flight-demo'  // Using new room with agent metadata
+                        room: 'flight-demo',
+                        // Trigger agent with metadata
+                        metadata: JSON.stringify({
+                            agent_request: true
+                        })
                     })
                 });
                 
                 if (!response.ok) {
-                    throw new Error('Failed to get token');
+                    const error = await response.text();
+                    throw new Error(`Failed to get token: ${error}`);
                 }
                 
                 const { token } = await response.json();
+                console.log('Got token:', token.substring(0, 50) + '...');
                 
                 // Create room and connect
                 room = new LivekitClient.Room({
@@ -293,10 +323,11 @@
                         noiseSuppression: true,
                         autoGainControl: true
                     },
-                    dynacast: true
+                    dynacast: true,
+                    adaptiveStream: true
                 });
                 
-                // Set up event handlers
+                // Set up event handlers before connecting
                 room.on('participantConnected', handleParticipantConnected);
                 room.on('participantDisconnected', handleParticipantDisconnected);
                 room.on('dataReceived', handleDataReceived);
@@ -304,20 +335,25 @@
                 room.on('trackSubscribed', handleTrackSubscribed);
                 room.on('trackUnsubscribed', handleTrackUnsubscribed);
                 room.on('audioLevelChanged', handleAudioLevelChanged);
+                room.on('connectionStateChanged', (state) => {
+                    console.log('Connection state:', state);
+                });
                 
                 // Connect to room
                 await room.connect(LIVEKIT_URL, token);
                 
                 updateStatus('Connected to LiveKit', 'connected');
-                addMessage('system', 'Connected! Requesting AI agent...');
+                addMessage('system', 'Connected! Enabling microphone...');
                 
                 // Enable microphone
                 await room.localParticipant.setMicrophoneEnabled(true);
                 
-                // Request agent by updating participant metadata
+                // Trigger agent by setting metadata
                 await room.localParticipant.setMetadata(JSON.stringify({ 
                     agent_request: true 
                 }));
+                
+                addMessage('system', 'Ready! Start speaking in any language.');
                 
                 connectBtn.disabled = true;
                 disconnectBtn.disabled = false;
@@ -338,19 +374,27 @@
             connectBtn.disabled = false;
             disconnectBtn.disabled = true;
             audioLevelEl.style.width = '0%';
+            audioControlsEl.classList.remove('visible');
         }
         
         function handleParticipantConnected(participant) {
             console.log('Participant connected:', participant.identity);
             if (participant.identity.includes('agent')) {
-                addMessage('system', 'AI Assistant joined the conversation');
+                addMessage('system', '🤖 AI Assistant joined the conversation');
+                // Subscribe to tracks
+                participant.tracks.forEach(publication => {
+                    if (publication.isSubscribed) {
+                        handleTrackSubscribed(publication.track, publication, participant);
+                    }
+                });
             }
         }
         
         function handleParticipantDisconnected(participant) {
             console.log('Participant disconnected:', participant.identity);
             if (participant.identity.includes('agent')) {
-                addMessage('system', 'AI Assistant left the conversation');
+                addMessage('system', '🤖 AI Assistant left the conversation');
+                audioControlsEl.classList.remove('visible');
             }
         }
         
@@ -375,6 +419,7 @@
             connectBtn.disabled = false;
             disconnectBtn.disabled = true;
             audioLevelEl.style.width = '0%';
+            audioControlsEl.classList.remove('visible');
             addMessage('system', 'Disconnected from server');
         }
         
@@ -382,16 +427,20 @@
             console.log('Track subscribed:', track.kind, participant.identity);
             
             if (track.kind === 'audio' && participant.identity.includes('agent')) {
-                // Attach the agent's audio track
+                // Attach the audio track to our audio element
                 const audioElement = track.attach();
-                audioElement.play().catch(e => console.error('Audio play error:', e));
-                document.body.appendChild(audioElement);
+                remoteAudioEl.srcObject = audioElement.srcObject;
+                audioControlsEl.classList.add('visible');
                 addMessage('system', '🔊 Agent audio connected');
             }
         }
         
         function handleTrackUnsubscribed(track, publication, participant) {
             console.log('Track unsubscribed:', track.kind, participant.identity);
+            if (track.kind === 'audio' && participant.identity.includes('agent')) {
+                track.detach();
+                audioControlsEl.classList.remove('visible');
+            }
         }
         
         function handleAudioLevelChanged(level, participant) {

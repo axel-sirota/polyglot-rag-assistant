@@ -4,7 +4,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
   
-  const apiUrl = 'http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com/api/livekit/token';
+  // Use environment variable or fallback to production URL
+  const apiUrl = process.env.API_URL || 'http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com/api/livekit/token';
   
   try {
     // Add agent metadata to the request
