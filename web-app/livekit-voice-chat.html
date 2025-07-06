@@ -469,7 +469,7 @@
             
             try {
                 // Get a token from our backend
-                const response = await fetch('/api/livekit-token', {
+                const response = await fetch('http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com/api/livekit/token', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -478,8 +478,11 @@
                         identity: `user-${Date.now()}`,
                         room: 'flight-demo',
                         metadata: JSON.stringify({
-                            agent_request: true,
                             language: document.getElementById('languageSelect').value
+                        }),
+                        roomMetadata: JSON.stringify({
+                            require_agent: true,
+                            agent_name: 'polyglot-flight-agent'
                         })
                     })
                 });
