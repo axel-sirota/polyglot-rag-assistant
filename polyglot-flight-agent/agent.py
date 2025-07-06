@@ -204,14 +204,14 @@ Always confirm important details like dates and destinations.""",
         # Configure session with multiple provider options for robustness
         logger.info("Initializing AgentSession with voice providers...")
         
-        # IMPORTANT: Due to a bug in LiveKit Agents 1.1.5, OpenAI Realtime audio is NOT published as tracks
-        # Using STT-LLM-TTS pipeline for reliable audio output
-        # Set use_realtime = True to test OpenAI Realtime (but audio won't work)
-        use_realtime = False
+        # Now using LiveKit Agents 1.0.23 which has working audio publishing
+        # Both OpenAI Realtime and STT-LLM-TTS pipeline should work
+        # Set use_realtime = True to test OpenAI Realtime
+        use_realtime = False  # STT-LLM-TTS is more reliable
         
         if use_realtime:
-            # WARNING: Audio will NOT work with OpenAI Realtime in LiveKit 1.1.5
-            # The WebSocket generates audio but doesn't publish it as LiveKit tracks
+            # Testing OpenAI Realtime with LiveKit 1.0.23
+            # This should work according to community reports
             try:
                 session = AgentSession(
                     llm=openai.realtime.RealtimeModel(
@@ -222,7 +222,7 @@ Always confirm important details like dates and destinations.""",
                     ),
                     vad=vad,
                 )
-                logger.warning("⚠️ Using OpenAI Realtime - AUDIO WILL NOT WORK due to LiveKit bug")
+                logger.info("🎤 Using OpenAI Realtime with LiveKit 1.0.23")
             except Exception as e:
                 logger.warning(f"OpenAI Realtime failed: {e}")
                 use_realtime = False
@@ -243,7 +243,7 @@ Always confirm important details like dates and destinations.""",
                 tts=cartesia.TTS(),  # Use default voice
                 turn_detection="vad"
             )
-            logger.info("✅ STT-LLM-TTS pipeline configured with Deepgram STT + GPT-4 + OpenAI TTS")
+            logger.info("✅ STT-LLM-TTS pipeline configured with Deepgram STT + GPT-4 + Cartesia TTS")
         
         # Add event handlers for debugging with proper error handling
         @session.on("user_state_changed")
@@ -321,17 +321,19 @@ Always confirm important details like dates and destinations.""",
         logger.info("Sending initial greeting...")
         try:
             if use_realtime:
-                # For Realtime, use generate_reply (but audio won't work anyway)
-                await session.generate_reply(
+                # For Realtime, use generate_reply
+                speech_handle = session.generate_reply(
                     instructions="Greet the user warmly in a brief, natural way and ask how you can help them find flights today.",
                     allow_interruptions=True
                 )
+                logger.info(f"Speech handle created: {speech_handle}")
             else:
                 # For STT-LLM-TTS, we can use say() which works properly
-                await session.say(
+                speech_handle = session.say(
                     "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
                     allow_interruptions=True
                 )
+                logger.info(f"Speech handle created: {speech_handle}")
             logger.info("✅ Initial greeting sent")
         except Exception as e:
             logger.error(f"Failed to send greeting: {e}")
@@ -348,6 +350,6 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            port=8081  # Set static debug server port
+            port=8082  # Set static debug server port
         )
     )
