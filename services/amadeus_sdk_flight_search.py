@@ -213,6 +213,7 @@ class AmadeusSDKFlightSearch:
         carriers = {
             "AA": "American Airlines",
             "DL": "Delta Air Lines",
+            "DA": "Delta Air Lines",  # Alternative code
             "UA": "United Airlines",
             "WN": "Southwest Airlines",
             "B6": "JetBlue Airways",

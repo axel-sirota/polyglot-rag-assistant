@@ -567,8 +567,8 @@ class FlightSearchServer:
                     timeout=8.0
                 ))
             
-            # If specific airline requested, also try SerpAPI for better coverage
-            if preferred_airline and self.serpapi_key:
+            # Always try SerpAPI for better coverage
+            if self.serpapi_key:
                 tasks.append(self._search_with_timeout(
                     self._search_flights_serpapi(
                         origin_code, dest_code, departure_date,
@@ -576,6 +576,17 @@ class FlightSearchServer:
                     ),
                     "SerpAPI",
                     timeout=8.0
+                ))
+            
+            # Always try Browserless for Google Flights scraping
+            if self.browserless_key:
+                tasks.append(self._search_with_timeout(
+                    self._search_google_flights_browserless(
+                        origin_code, dest_code, departure_date,
+                        preferred_airline, passengers, cabin_class
+                    ),
+                    "Browserless",
+                    timeout=10.0
                 ))
             
             # Run all searches in parallel
@@ -600,22 +611,17 @@ class FlightSearchServer:
             # Filter by airline if requested
             if preferred_airline:
                 airline_flights = self._filter_by_airline(enriched_flights, preferred_airline)
-                if not airline_flights and self.browserless_key:
-                    # Only use Browserless if specific airline not found
-                    logger.info(f"Airline {preferred_airline} not found, trying web scraping")
-                    scraped = await self._search_flights_browserless(
-                        origin_code, dest_code, departure_date,
-                        preferred_airline, passengers, cabin_class
-                    )
-                    if scraped:
-                        enriched_flights.extend(scraped)
-                        airline_flights = scraped
                 
                 if airline_flights:
+                    # Found the requested airline
+                    logger.info(f"Found {len(airline_flights)} {preferred_airline} flights")
                     return airline_flights
                 else:
-                    # Return all flights if specific airline not found
-                    logger.info(f"No {preferred_airline} flights found, returning all options")
+                    # Airline not found - return all flights but note the preference
+                    logger.info(f"No {preferred_airline} flights found, returning all {len(enriched_flights)} options")
+                    # Add a note to the first few flights about airline not found
+                    for flight in enriched_flights[:3]:
+                        flight['note'] = f"Note: {preferred_airline} not available on this route"
                     return enriched_flights
             
             return enriched_flights
@@ -1124,13 +1130,178 @@ class FlightSearchServer:
         airline_lower = airline.lower()
         filtered = []
         
+        # Common airline name variations
+        airline_aliases = {
+            "american": ["american airlines", "aa"],
+            "united": ["united airlines", "ua"],
+            "delta": ["delta air lines", "delta airlines", "dl"],
+            "southwest": ["southwest airlines", "wn"],
+            "jetblue": ["jetblue airways", "b6"],
+            "alaska": ["alaska airlines", "as"],
+            "spirit": ["spirit airlines", "nk"],
+            "frontier": ["frontier airlines", "f9"]
+        }
+        
+        # Get all possible names for the requested airline
+        possible_names = [airline_lower]
+        for key, aliases in airline_aliases.items():
+            if airline_lower in key or key in airline_lower:
+                possible_names.extend(aliases)
+            for alias in aliases:
+                if airline_lower in alias or alias in airline_lower:
+                    possible_names.append(key)
+                    possible_names.extend(aliases)
+        
+        # Remove duplicates
+        possible_names = list(set(possible_names))
+        
         for flight in flights:
             flight_airline = flight.get('airline', '').lower()
-            # Check if airline name contains the search term
-            if airline_lower in flight_airline or flight_airline in airline_lower:
-                filtered.append(flight)
+            flight_code = flight.get('airline_code', '').lower()
+            
+            # Check against all possible names
+            for name in possible_names:
+                if name in flight_airline or flight_airline in name or flight_code == name:
+                    filtered.append(flight)
+                    break
         
         return filtered
+    
+    async def _search_google_flights_browserless(
+        self, origin: str, destination: str, departure_date: str,
+        airline: Optional[str], passengers: int, cabin_class: str
+    ) -> List[Dict[str, Any]]:
+        """Use Browserless.io to scrape Google Flights directly"""
+        try:
+            # Build Google Flights URL
+            base_url = "https://www.google.com/travel/flights/search"
+            
+            # Map cabin class to Google's format
+            cabin_map = {
+                "economy": "1",
+                "premium_economy": "2", 
+                "business": "3",
+                "first": "4"
+            }
+            cabin_code = cabin_map.get(cabin_class.lower(), "1")
+            
+            # Format date for Google (YYYY-MM-DD works)
+            params = {
+                "f": origin,           # from
+                "t": destination,      # to
+                "d": departure_date,   # departure date
+                "tt": "o",            # trip type: o=one-way
+                "c": cabin_code,      # cabin class
+                "px": passengers,     # passengers
+                "curr": "USD"         # currency
+            }
+            
+            # Build URL with parameters
+            query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+            search_url = f"{base_url}?{query_string}"
+            
+            logger.info(f"Scraping Google Flights via Browserless: {search_url}")
+            
+            # Browserless.io endpoint
+            endpoint = f"https://production-sfo.browserless.io/scrape?token={self.browserless_key}"
+            
+            # Scraping configuration for Google Flights
+            payload = {
+                "url": search_url,
+                "elements": [
+                    {
+                        "selector": "[jsname='BVAVmf']",  # Flight results container
+                        "timeout": 15000
+                    }
+                ],
+                "waitForSelector": "[jsname='BVAVmf']",
+                "waitForTimeout": 5000,
+                "screenshot": False
+            }
+            
+            response = await self.http_client.post(
+                endpoint,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=20.0
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                flights = []
+                
+                if data.get("data") and len(data["data"]) > 0:
+                    html = data["data"][0].get("html", "")
+                    # Parse Google Flights HTML
+                    flights = self._parse_google_flights_html(html, airline)
+                    logger.info(f"Scraped {len(flights)} flights from Google Flights")
+                
+                return flights
+            else:
+                logger.error(f"Browserless error: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Google Flights scraping error: {e}")
+            return []
+    
+    def _parse_google_flights_html(self, html: str, preferred_airline: Optional[str]) -> List[Dict[str, Any]]:
+        """Parse Google Flights HTML to extract flight information"""
+        flights = []
+        
+        try:
+            # This is a simplified parser - Google Flights HTML is complex
+            # Look for patterns in the HTML
+            import re
+            
+            # Pattern to find airline names
+            airline_pattern = r'<span[^>]*>([A-Za-z\s]+(?:Airlines?|Airways?))</span>'
+            airlines = re.findall(airline_pattern, html)
+            
+            # Pattern to find prices (USD)
+            price_pattern = r'\$([0-9,]+)'
+            prices = re.findall(price_pattern, html)
+            
+            # Pattern to find times
+            time_pattern = r'(\d{1,2}:\d{2}\s*[APap][Mm])'
+            times = re.findall(time_pattern, html)
+            
+            # Pattern to find flight duration
+            duration_pattern = r'(\d+h\s*\d*m?)'
+            durations = re.findall(duration_pattern, html)
+            
+            # Try to extract structured data
+            # Google often includes JSON-LD or structured data
+            json_pattern = r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>'
+            json_matches = re.findall(json_pattern, html, re.DOTALL)
+            
+            # Combine extracted data into flight records
+            # This is approximate - real parsing would need more sophisticated logic
+            for i in range(min(len(airlines), len(prices))):
+                airline = airlines[i] if i < len(airlines) else "Unknown"
+                price = prices[i] if i < len(prices) else "N/A"
+                
+                # If filtering by airline and this isn't a match, skip
+                if preferred_airline and preferred_airline.lower() not in airline.lower():
+                    continue
+                
+                flight = {
+                    "airline": airline,
+                    "price": f"${price}",
+                    "departure_time": times[i*2] if i*2 < len(times) else "TBD",
+                    "arrival_time": times[i*2+1] if i*2+1 < len(times) else "TBD",
+                    "duration": durations[i] if i < len(durations) else "N/A",
+                    "source": "Google Flights (via Browserless)",
+                    "booking_note": "Visit Google Flights to book"
+                }
+                flights.append(flight)
+            
+            # Limit results
+            return flights[:10]
+            
+        except Exception as e:
+            logger.error(f"Error parsing Google Flights HTML: {e}")
+            return []
     
     async def _search_flights_browserless(
         self, origin: str, destination: str, departure_date: str,
