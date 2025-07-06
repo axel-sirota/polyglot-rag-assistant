@@ -11,12 +11,17 @@ from datetime import datetime
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent, AgentSession, JobContext, RunContext,
-    WorkerOptions, cli, function_tool, JobProcess, AutoSubscribe
+    WorkerOptions, cli, function_tool, JobProcess, AutoSubscribe,
+    io
 )
 from livekit.plugins import openai, silero, deepgram, cartesia
 from livekit import rtc
 import aiohttp
 import asyncio
+import numpy as np
+
+# Import our audio utilities
+from audio_utils import resample_audio, create_audio_frame_48khz, generate_test_tone, AudioFrameBuffer
 
 # Load environment variables
 load_dotenv()
@@ -137,17 +142,110 @@ def prewarm(proc: JobProcess):
     """Preload models to prevent performance issues"""
     logger.info("Prewarming models...")
     
-    # Preload VAD with optimized settings
+    # Preload VAD with optimized settings for 48kHz
     proc.userdata["vad"] = silero.VAD.load(
         min_speech_duration=0.05,
         min_silence_duration=0.55,
         prefix_padding_duration=0.5,
         activation_threshold=0.5,
-        sample_rate=16000,
+        sample_rate=48000,  # Changed to 48kHz for WebRTC compatibility
         force_cpu=True  # Prevents GPU contention
     )
     
     logger.info("Models prewarmed successfully")
+
+
+class ResamplingAudioOutput(io.AudioOutput):
+    """Audio output that resamples TTS audio from 24kHz to 48kHz"""
+    
+    def __init__(self, room: rtc.Room):
+        super().__init__()
+        self.room = room
+        self.audio_source = rtc.AudioSource(sample_rate=48000, num_channels=1)
+        self.track_published = False
+        self.frame_buffer = AudioFrameBuffer(sample_rate=48000)
+        logger.info("Created ResamplingAudioOutput with 48kHz AudioSource")
+        
+    async def start(self):
+        """Start the audio output and publish track"""
+        await self.publish_track()
+        
+    async def publish_track(self):
+        """Publish the audio track with proper options"""
+        if not self.track_published:
+            track = rtc.LocalAudioTrack.create_audio_track(
+                "agent_tts_audio", 
+                self.audio_source
+            )
+            
+            options = rtc.TrackPublishOptions(
+                source=rtc.TrackSource.SOURCE_MICROPHONE,
+                dtx=False,  # Disable DTX for TTS
+                red=True,   # Enable redundancy
+                audio_bitrate=64000
+            )
+            
+            publication = await self.room.local_participant.publish_track(track, options)
+            logger.info(f"✅ Published audio track with 48kHz: {publication}")
+            self.track_published = True
+    
+    def capture_frame(self, frame: rtc.AudioFrame):
+        """Capture audio frame, resampling if necessary"""
+        if frame.sample_rate != 48000:
+            # Resample to 48kHz
+            resampled_data = resample_audio(
+                frame.data, 
+                original_rate=frame.sample_rate,
+                target_rate=48000
+            )
+            
+            # Create frames from resampled data
+            frames = self.frame_buffer.add_data(resampled_data)
+            for new_frame in frames:
+                self.audio_source.capture_frame(new_frame)
+                logger.debug(f"Captured resampled frame: {frame.sample_rate}Hz → 48kHz")
+        else:
+            # Already at 48kHz
+            self.audio_source.capture_frame(frame)
+    
+    async def aclose(self):
+        """Close the audio output"""
+        pass
+
+
+async def test_audio_tone(room: rtc.Room, duration: float = 1.0):
+    """Generate and publish a test tone at 48kHz"""
+    logger.info("🔊 Generating test tone at 440Hz...")
+    
+    # Create audio source at 48kHz
+    audio_source = rtc.AudioSource(sample_rate=48000, num_channels=1)
+    
+    # Create and publish track
+    track = rtc.LocalAudioTrack.create_audio_track("test_tone", audio_source)
+    options = rtc.TrackPublishOptions(
+        source=rtc.TrackSource.SOURCE_MICROPHONE,
+        dtx=False
+    )
+    await room.local_participant.publish_track(track, options)
+    
+    # Generate test tone
+    audio_data = await generate_test_tone(frequency=440, duration=duration, sample_rate=48000)
+    
+    # Send in 10ms chunks
+    chunk_size = 480 * 2  # 480 samples * 2 bytes per sample
+    for i in range(0, len(audio_data), chunk_size):
+        chunk = audio_data[i:i+chunk_size]
+        if len(chunk) == chunk_size:
+            frame = rtc.AudioFrame(
+                data=chunk,
+                sample_rate=48000,
+                num_channels=1,
+                samples_per_channel=480
+            )
+            audio_source.capture_frame(frame)
+            await asyncio.sleep(0.01)  # 10ms
+    
+    logger.info("✅ Test tone complete - you should have heard a beep!")
 
 
 async def entrypoint(ctx: JobContext):
@@ -159,6 +257,10 @@ async def entrypoint(ctx: JobContext):
         logger.info("Connecting to room with AUDIO_ONLY subscription...")
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
         logger.info("Successfully connected to room")
+        
+        # Test tone option - ENABLED to verify audio works
+        logger.info("🔊 Playing test tone to verify audio...")
+        await test_audio_tone(ctx.room, duration=1.0)
         
         # Get preloaded VAD from prewarm
         vad = ctx.proc.userdata.get("vad")
@@ -234,7 +336,8 @@ Always confirm important details like dates and destinations.""",
                 vad=vad,
                 stt=deepgram.STT(
                     model="nova-3",
-                    language="en"  # Default to English, will auto-detect other languages
+                    language="en",  # Default to English, will auto-detect other languages
+                    sample_rate=48000  # Match WebRTC requirement
                 ),
                 llm=openai.LLM(
                     model="gpt-4o",  # Use full GPT-4 for better multilingual support
@@ -244,6 +347,14 @@ Always confirm important details like dates and destinations.""",
                 turn_detection="vad"
             )
             logger.info("✅ STT-LLM-TTS pipeline configured with Deepgram STT + GPT-4 + Cartesia TTS")
+        
+        # Create and configure custom audio output with resampling
+        custom_audio_output = ResamplingAudioOutput(ctx.room)
+        await custom_audio_output.start()
+        
+        # Override the session's audio output
+        session.output._audio = custom_audio_output
+        logger.info("✅ Custom audio output with 48kHz resampling configured")
         
         # Add event handlers for debugging with proper error handling
         @session.on("user_state_changed")
@@ -288,10 +399,25 @@ Always confirm important details like dates and destinations.""",
         def on_speech_created(event):
             logger.info(f"🎵 Speech created - Audio channel active: {event}")
             
+        # Monitor TTS events
+        @session.on("tts_started")
+        def on_tts_started(event):
+            logger.info("🎵 TTS STARTED: Generating audio...")
+        
+        @session.on("tts_stopped") 
+        def on_tts_stopped(event):
+            logger.info("🎵 TTS STOPPED")
+            
         # Monitor when audio is actually being sent
         @session.on("metrics_collected")
         def on_metrics(event):
-            logger.debug(f"📊 Metrics: {event}")
+            if hasattr(event, 'metrics') and hasattr(event.metrics, 'type'):
+                if event.metrics.type == 'tts_metrics':
+                    logger.info(f"📊 TTS Metrics: duration={getattr(event.metrics, 'audio_duration', 'unknown')}s")
+                elif event.metrics.type == 'stt_metrics':
+                    logger.debug(f"📊 STT Metrics: {event.metrics}")
+                else:
+                    logger.debug(f"📊 Metrics: {event.metrics.type}")
         
         # Monitor track publishing
         @ctx.room.on("track_published")

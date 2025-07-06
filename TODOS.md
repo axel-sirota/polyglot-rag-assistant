@@ -11,14 +11,14 @@ Fixing the LiveKit Agent audio issue and preparing for production deployment.
 - See `AUDIO_FIX_IMPLEMENTATION_PLAN.md` for full details
 
 ### Audio Fix Tasks
-- [ ] Install scipy for audio resampling: `pip install scipy`
-- [ ] Create `polyglot-flight-agent/audio_utils.py` with resampling functions
-- [ ] Update VAD configuration to 48kHz (currently 16kHz)
-- [ ] Create ResamplingAudioOutput class
-- [ ] Update AudioSource to 48kHz: `rtc.AudioSource(48000, 1)`
-- [ ] Add proper TrackPublishOptions with SOURCE_MICROPHONE
-- [ ] Implement test tone generator for verification
-- [ ] Add comprehensive audio pipeline logging
+- [x] Install scipy for audio resampling: `pip install scipy`
+- [x] Create `polyglot-flight-agent/audio_utils.py` with resampling functions
+- [x] Update VAD configuration to 48kHz (currently 16kHz)
+- [x] Create ResamplingAudioOutput class
+- [x] Update AudioSource to 48kHz: `rtc.AudioSource(48000, 1)`
+- [x] Add proper TrackPublishOptions with SOURCE_MICROPHONE
+- [x] Implement test tone generator for verification
+- [x] Add comprehensive audio pipeline logging
 - [ ] Test with both test tone and actual TTS
 - [ ] Verify audio is audible in browser
 
