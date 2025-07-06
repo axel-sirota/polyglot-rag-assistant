@@ -41,6 +41,7 @@ class FlightSearchServer:
     def __init__(self):
         self.serpapi_key = os.getenv("SERPAPI_API_KEY")
         self.aviationstack_key = os.getenv("AVIATIONSTACK_API_KEY")
+        self.browserless_key = os.getenv("BROWSERLESS_IO_API_KEY")
         self.http_client = httpx.AsyncClient()
         # Initialize Amadeus SDK
         self.amadeus_search = AmadeusSDKFlightSearch()
@@ -531,15 +532,16 @@ class FlightSearchServer:
         return_date: Optional[str] = None,
         passengers: int = 1,
         cabin_class: str = "economy",
-        currency: str = "USD"
+        currency: str = "USD",
+        preferred_airline: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Search for flights - Amadeus primary, AviationStack secondary, SerpAPI fallback"""
+        """Search for flights - Amadeus primary, AviationStack secondary, SerpAPI fallback, Browserless.io final fallback"""
         try:
             # Convert city names to airport codes if needed
             origin_code = await self.get_airport_code(origin)
             dest_code = await self.get_airport_code(destination)
             
-            logger.info(f"Searching flights: {origin_code} -> {dest_code} on {departure_date}")
+            logger.info(f"Searching flights: {origin_code} -> {dest_code} on {departure_date}, preferred airline: {preferred_airline}")
             
             # Try Amadeus first (most reliable)
             try:
@@ -549,7 +551,16 @@ class FlightSearchServer:
                 )
                 if flights:
                     logger.info(f"Amadeus returned {len(flights)} flights")
-                    return flights
+                    # Filter by preferred airline if specified
+                    if preferred_airline:
+                        filtered_flights = self._filter_by_airline(flights, preferred_airline)
+                        if filtered_flights:
+                            logger.info(f"Found {len(filtered_flights)} {preferred_airline} flights")
+                            return filtered_flights
+                        else:
+                            logger.info(f"No {preferred_airline} flights found in Amadeus results")
+                    else:
+                        return flights
             except Exception as e:
                 logger.warning(f"Amadeus failed: {e}, trying fallback APIs")
             
@@ -562,19 +573,44 @@ class FlightSearchServer:
                     )
                     if flights:
                         logger.info(f"AviationStack returned {len(flights)} flights")
-                        return flights
+                        if preferred_airline:
+                            filtered_flights = self._filter_by_airline(flights, preferred_airline)
+                            if filtered_flights:
+                                return filtered_flights
+                        else:
+                            return flights
                 except Exception as e:
                     logger.warning(f"AviationStack failed: {e}, trying SerpAPI fallback")
             
             # Fallback to SerpAPI
             if self.serpapi_key:
                 try:
-                    return await self._search_flights_serpapi(
+                    flights = await self._search_flights_serpapi(
                         origin_code, dest_code, departure_date, 
                         return_date, passengers, cabin_class, currency
                     )
+                    if flights and preferred_airline:
+                        filtered_flights = self._filter_by_airline(flights, preferred_airline)
+                        if filtered_flights:
+                            return filtered_flights
+                    elif flights:
+                        return flights
                 except Exception as e:
                     logger.warning(f"SerpAPI also failed: {e}")
+            
+            # If preferred airline requested but not found, try Browserless.io scraping
+            if preferred_airline and self.browserless_key:
+                logger.info(f"Trying Browserless.io to scrape {preferred_airline} website")
+                try:
+                    flights = await self._search_flights_browserless(
+                        origin_code, dest_code, departure_date,
+                        preferred_airline, passengers, cabin_class
+                    )
+                    if flights:
+                        logger.info(f"Browserless.io found {len(flights)} {preferred_airline} flights")
+                        return flights
+                except Exception as e:
+                    logger.warning(f"Browserless.io failed: {e}")
             
             # If all fail or no keys available, return mock data
             logger.info("Using mock flight data")
@@ -1017,6 +1053,112 @@ class FlightSearchServer:
         fallback = city.upper()[:3]
         logger.warning(f"Could not find airport code for '{city}', using fallback: {fallback}")
         return fallback
+    
+    def _filter_by_airline(self, flights: List[Dict[str, Any]], airline: str) -> List[Dict[str, Any]]:
+        """Filter flights by airline name"""
+        airline_lower = airline.lower()
+        filtered = []
+        
+        for flight in flights:
+            flight_airline = flight.get('airline', '').lower()
+            # Check if airline name contains the search term
+            if airline_lower in flight_airline or flight_airline in airline_lower:
+                filtered.append(flight)
+        
+        return filtered
+    
+    async def _search_flights_browserless(
+        self, origin: str, destination: str, departure_date: str,
+        airline: str, passengers: int, cabin_class: str
+    ) -> List[Dict[str, Any]]:
+        """Use Browserless.io to scrape airline website directly"""
+        # Map airline names to websites
+        airline_urls = {
+            "american airlines": "https://www.aa.com",
+            "american": "https://www.aa.com",
+            "aa": "https://www.aa.com",
+            "united": "https://www.united.com", 
+            "united airlines": "https://www.united.com",
+            "ua": "https://www.united.com",
+            "delta": "https://www.delta.com",
+            "delta airlines": "https://www.delta.com",
+            "dl": "https://www.delta.com",
+            "southwest": "https://www.southwest.com",
+            "southwest airlines": "https://www.southwest.com",
+            "wn": "https://www.southwest.com",
+            "jetblue": "https://www.jetblue.com",
+            "b6": "https://www.jetblue.com",
+            "spirit": "https://www.spirit.com",
+            "nk": "https://www.spirit.com",
+            "frontier": "https://www.flyfrontier.com",
+            "f9": "https://www.flyfrontier.com",
+            "alaska": "https://www.alaskaair.com",
+            "alaska airlines": "https://www.alaskaair.com",
+            "as": "https://www.alaskaair.com"
+        }
+        
+        airline_lower = airline.lower()
+        airline_url = airline_urls.get(airline_lower)
+        
+        if not airline_url:
+            logger.warning(f"No website mapping for airline: {airline}")
+            return []
+        
+        try:
+            # Browserless.io endpoint
+            endpoint = f"https://production-sfo.browserless.io/scrape?token={self.browserless_key}"
+            
+            # Build search URL (this is a generic approach, specific airlines may need custom URLs)
+            search_url = f"{airline_url}/flight-search?origin={origin}&destination={destination}&date={departure_date}&passengers={passengers}"
+            
+            # Scraping configuration
+            payload = {
+                "url": search_url,
+                "elements": [
+                    {
+                        "selector": "[class*='flight-result'], [class*='flight-option'], [data-test*='flight']",
+                        "timeout": 10000
+                    }
+                ],
+                "waitForTimeout": 5000,
+                "screenshot": False
+            }
+            
+            response = await self.http_client.post(
+                endpoint,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30.0
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                flights = []
+                
+                if data.get("data"):
+                    # Parse the scraped HTML elements
+                    for element in data["data"]:
+                        html = element.get("html", "")
+                        # Basic parsing - this would need to be customized per airline
+                        if "price" in html.lower() and ("am" in html.lower() or "pm" in html.lower()):
+                            # Extract basic flight info from HTML
+                            flight = {
+                                "airline": airline,
+                                "flight_number": f"{airline_lower.upper()[:2]}XXX",  # Placeholder
+                                "departure_time": "TBD",
+                                "arrival_time": "TBD", 
+                                "price": "Check airline website",
+                                "departure_airport": origin,
+                                "arrival_airport": destination,
+                                "note": f"Scraped from {airline} website - visit {airline_url} for booking"
+                            }
+                            flights.append(flight)
+                
+                return flights[:5]  # Return up to 5 results
+                
+        except Exception as e:
+            logger.error(f"Browserless.io scraping error: {e}")
+            return []
 
 # Create server instance
 server = FlightSearchServer()

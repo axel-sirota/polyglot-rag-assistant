@@ -51,16 +51,20 @@ class FlightAPIClient:
         if self.session:
             await self.session.close()
     
-    async def search_flights(self, origin: str, destination: str, date: str) -> Dict[str, Any]:
+    async def search_flights(self, origin: str, destination: str, date: str, preferred_airline: str = None) -> Dict[str, Any]:
         """Call our API server which uses Amadeus SDK"""
         try:
+            params = {
+                "origin": origin,
+                "destination": destination,
+                "departure_date": date
+            }
+            if preferred_airline:
+                params["preferred_airline"] = preferred_airline
+                
             async with self.session.get(
                 f"{self.base_url}/api/flights",
-                params={
-                    "origin": origin,
-                    "destination": destination,
-                    "departure_date": date
-                }
+                params=params
             ) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -78,7 +82,8 @@ async def search_flights(
     context: RunContext,
     origin: str,
     destination: str,
-    departure_date: str
+    departure_date: str,
+    preferred_airline: str = None
 ) -> Dict[str, Any]:
     """Search for available flights between cities.
     
@@ -86,15 +91,16 @@ async def search_flights(
         origin: City name or airport code (e.g., 'New York' or 'JFK')
         destination: City name or airport code (e.g., 'Los Angeles' or 'LAX')
         departure_date: Date in YYYY-MM-DD format
+        preferred_airline: Specific airline requested by user (e.g., 'American Airlines', 'United')
     
     Returns:
         Flight search results with pricing and availability
     """
-    logger.info(f"Searching flights: {origin} -> {destination} on {departure_date}")
+    logger.info(f"Searching flights: {origin} -> {destination} on {departure_date}, airline: {preferred_airline}")
     
     async with FlightAPIClient() as client:
         try:
-            results = await client.search_flights(origin, destination, departure_date)
+            results = await client.search_flights(origin, destination, departure_date, preferred_airline)
             
             if "error" in results:
                 return {
@@ -117,6 +123,11 @@ async def search_flights(
                 
                 cheapest = min(flights, key=get_price)
                 
+                # Check if we found the preferred airline
+                airline_found = False
+                if preferred_airline:
+                    airline_found = any(preferred_airline.lower() in flight.get('airline', '').lower() for flight in flights)
+                
                 # Format all flights for voice response with better formatting
                 flight_list = []
                 for i, flight in enumerate(flights[:10], 1):  # Show up to 10 flights
@@ -131,13 +142,21 @@ async def search_flights(
                 else:
                     additional_msg = ""
                 
+                # Add airline-specific message
+                airline_msg = ""
+                if preferred_airline and not airline_found:
+                    airline_msg = f"I couldn't find any {preferred_airline} flights on this route, but here are alternative options. "
+                elif preferred_airline and airline_found:
+                    airline_msg = f"Good news! I found {preferred_airline} flights among the results. "
+                
                 return {
                     "status": "success",
-                    "message": f"I found {flight_count} flights from {origin} to {destination}. "
+                    "message": airline_msg + f"I found {flight_count} flights from {origin} to {destination}. "
                               f"The cheapest is {cheapest['airline']} for {cheapest['price']}. "
                               f"Here are all available options: " + ". ".join(flight_list) + additional_msg,
                     "flights": flights[:10],  # Return top 10 for details
-                    "formatted_flights": flight_list  # For potential UI display
+                    "formatted_flights": flight_list,  # For potential UI display
+                    "preferred_airline_found": airline_found
                 }
             else:
                 return {
@@ -326,9 +345,16 @@ SUPPORTED LANGUAGES:
 
 FLIGHT SEARCH:
 - When users ask about flights, help them search using natural conversation
+- Extract any airline preference from their request (e.g., "American Airlines flights", "United", "AA")
 - Ask for any missing information (origin, destination, date) in their language
 - Present results clearly and conversationally in their language
 - Convert city names to appropriate format for search (e.g., "Nueva York" → "New York")
+
+AIRLINE PREFERENCE:
+- If user mentions a specific airline, extract it and pass as preferred_airline parameter
+- Common airline mentions: "American Airlines", "United", "Delta", "Southwest", "JetBlue", "Spirit", "Frontier", "Alaska"
+- Also recognize airline codes: "AA" (American), "UA" (United), "DL" (Delta), "WN" (Southwest), etc.
+- If specific airline not found, acknowledge and explain showing alternatives
 
 CONVERSATION STYLE:
 - Be friendly, helpful, and conversational

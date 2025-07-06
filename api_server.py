@@ -50,6 +50,7 @@ class FlightSearchRequest(BaseModel):
     passengers: int = 1
     cabin_class: str = "economy"
     currency: str = "USD"
+    preferred_airline: Optional[str] = None
 
 # Create FastAPI app
 app = FastAPI(
@@ -292,7 +293,8 @@ async def search_flights(request: FlightSearchRequest):
             return_date=request.return_date,
             passengers=request.passengers,
             cabin_class=request.cabin_class,
-            currency=request.currency
+            currency=request.currency,
+            preferred_airline=request.preferred_airline
         )
         return {
             "success": True,
@@ -467,7 +469,8 @@ async def api_search_flights(
     return_date: Optional[str] = None,
     passengers: int = 1,
     cabin_class: str = "economy",
-    currency: str = "USD"
+    currency: str = "USD",
+    preferred_airline: Optional[str] = None
 ):
     """API endpoint for flight search - used by LiveKit agent"""
     try:
@@ -477,6 +480,7 @@ async def api_search_flights(
             departure_date=departure_date,
             return_date=return_date,
             passengers=passengers,
+            preferred_airline=preferred_airline,
             cabin_class=cabin_class,
             currency=currency
         )
