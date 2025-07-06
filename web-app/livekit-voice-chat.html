@@ -469,7 +469,7 @@
             
             try {
                 // Get a token from our backend
-                const response = await fetch('http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com/api/livekit/token', {
+                const response = await fetch('/api/livekit-token', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -479,10 +479,6 @@
                         room: 'flight-demo',
                         metadata: JSON.stringify({
                             language: document.getElementById('languageSelect').value
-                        }),
-                        roomMetadata: JSON.stringify({
-                            require_agent: true,
-                            agent_name: 'polyglot-flight-agent'
                         })
                     })
                 });
@@ -564,10 +560,14 @@
                 console.log('Data received:', message);
                 
                 if (message.type === 'transcription') {
-                    if (participant === room.localParticipant) {
+                    // Transcriptions come from the agent, not from local participant
+                    if (message.speaker === 'user') {
                         addMessage('user', message.text);
+                    } else if (message.speaker === 'assistant') {
+                        addMessage('assistant', message.text);
                     }
-                } else if (message.type === 'agent_message') {
+                } else if (message.type === 'flight_results') {
+                    // Handle flight results separately if needed
                     addMessage('assistant', message.text, message.flights);
                 }
             } catch (e) {

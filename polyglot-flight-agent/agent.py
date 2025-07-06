@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Any
 from datetime import datetime, date
 import json
+import asyncio
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -433,11 +434,31 @@ DATE HANDLING:
         @session.on("input_speech_transcription_completed")
         def on_speech_transcribed(event):
             logger.info(f"💬 User said: {getattr(event, 'text', 'unknown')}")
+            # Send to data channel for chat UI
+            try:
+                data = json.dumps({
+                    "type": "transcription",
+                    "speaker": "user", 
+                    "text": getattr(event, 'text', '')
+                }).encode('utf-8')
+                asyncio.create_task(ctx.room.local_participant.publish_data(data, reliable=True))
+            except Exception as e:
+                logger.error(f"Error sending user transcription: {e}")
         
         # Add handler for agent speech
         @session.on("agent_speech_committed") 
         def on_agent_speech(event):
             logger.info(f"🗣️ Agent speaking: {getattr(event, 'text', 'unknown')}")
+            # Send to data channel for chat UI
+            try:
+                data = json.dumps({
+                    "type": "transcription", 
+                    "speaker": "assistant",
+                    "text": getattr(event, 'text', '')
+                }).encode('utf-8')
+                asyncio.create_task(ctx.room.local_participant.publish_data(data, reliable=True))
+            except Exception as e:
+                logger.error(f"Error sending agent transcription: {e}")
         
         # Add handler for speech creation (audio initialization)
         @session.on("speech_created")
