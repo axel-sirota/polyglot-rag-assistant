@@ -115,20 +115,27 @@ async def search_flights(
                 
                 cheapest = min(flights, key=get_price)
                 
-                # Format top 3 flights for voice response
-                top_flights = []
-                for i, flight in enumerate(flights[:3], 1):
-                    top_flights.append(
-                        f"Option {i}: {flight['airline']} for {flight['price']}, "
+                # Format all flights for voice response with better formatting
+                flight_list = []
+                for i, flight in enumerate(flights[:10], 1):  # Show up to 10 flights
+                    flight_list.append(
+                        f"Option {i}: {flight['airline']} flight for {flight['price']}, "
                         f"departing at {flight['departure_time']}"
                     )
+                
+                # Create a more conversational response
+                if flight_count > 10:
+                    additional_msg = f" I'm showing you the first 10 options. Would you like to filter by airline, time, or price?"
+                else:
+                    additional_msg = ""
                 
                 return {
                     "status": "success",
                     "message": f"I found {flight_count} flights from {origin} to {destination}. "
-                              f"The cheapest option is ${cheapest['price']} with {cheapest['airline']}. "
-                              f"Here are the top options: " + " | ".join(top_flights),
-                    "flights": flights[:5]  # Return top 5 for details
+                              f"The cheapest is {cheapest['airline']} for {cheapest['price']}. "
+                              f"Here are all available options: " + ". ".join(flight_list) + additional_msg,
+                    "flights": flights[:10],  # Return top 10 for details
+                    "formatted_flights": flight_list  # For potential UI display
                 }
             else:
                 return {
@@ -277,9 +284,9 @@ async def entrypoint(ctx: JobContext):
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
         logger.info("Successfully connected to room")
         
-        # Test tone option - ENABLED to verify audio works
-        logger.info("🔊 Playing test tone to verify audio...")
-        await test_audio_tone(ctx.room, duration=1.0)
+        # Test tone option - DISABLED (was causing weird audio)
+        # logger.info("🔊 Playing test tone to verify audio...")
+        # await test_audio_tone(ctx.room, duration=1.0)
         
         # Get preloaded VAD from prewarm
         vad = ctx.proc.userdata.get("vad")
@@ -318,7 +325,9 @@ CONVERSATION STYLE:
 - Be friendly, helpful, and conversational
 - If you don't find specific airlines, acknowledge it and show alternatives
 - Format prices and times appropriately for their culture
-- Keep responses concise but informative
+- When presenting flights, list ALL options clearly, not just top 3
+- Ask if they want to filter results when there are many options
+- If user switches languages mid-conversation, continue responding but acknowledge the switch
 
 You can search for real flights using the search_flights function.
 Always confirm important details like dates and destinations.

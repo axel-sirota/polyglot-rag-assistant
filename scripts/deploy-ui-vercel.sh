@@ -33,19 +33,19 @@ fi
 echo "🔧 Updating configuration..."
 # Create temporary directory for deployment
 DEPLOY_DIR=$(mktemp -d)
-# Copy ONLY the LiveKit client files, not the old UI
-cp web-app/livekit-client.html $DEPLOY_DIR/index.html
+# Copy the web app files
+cp web-app/livekit-voice-chat.html $DEPLOY_DIR/index.html
+cp web-app/livekit-client.html $DEPLOY_DIR/
 cp web-app/styles.css $DEPLOY_DIR/ 2>/dev/null || true
 
 # Copy API routes for Vercel
 mkdir -p $DEPLOY_DIR/api
 cp -r web-app/api/* $DEPLOY_DIR/api/ 2>/dev/null || true
 
-# Update LiveKit URL in the files
-# API calls are already using relative URLs
-find $DEPLOY_DIR -name "*.html" -exec sed -i.bak "s|wss://polyglot-rag.livekit.cloud|${LIVEKIT_URL}|g" {} \;
-find $DEPLOY_DIR -name "*.js" -exec sed -i.bak "s|http://localhost:8000|${API_URL}|g" {} \;
-find $DEPLOY_DIR -name "*.js" -exec sed -i.bak "s|wss://polyglot-rag.livekit.cloud|${LIVEKIT_URL}|g" {} \;
+# Update URLs in the files
+# The HTML files have the full URL that needs to be replaced
+sed -i.bak "s|wss://polyglot-rag-assistant-3l6xagej.livekit.cloud|${LIVEKIT_URL}|g" $DEPLOY_DIR/*.html
+sed -i.bak "s|http://localhost:8000|${API_URL}|g" $DEPLOY_DIR/*.js 2>/dev/null || true
 
 # Clean up backup files
 find $DEPLOY_DIR -name "*.bak" -delete
