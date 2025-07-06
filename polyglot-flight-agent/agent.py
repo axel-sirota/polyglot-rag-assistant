@@ -142,13 +142,14 @@ def prewarm(proc: JobProcess):
     """Preload models to prevent performance issues"""
     logger.info("Prewarming models...")
     
-    # Preload VAD with optimized settings for 48kHz
+    # Preload VAD with optimized settings
+    # NOTE: Silero VAD only supports 8kHz and 16kHz
     proc.userdata["vad"] = silero.VAD.load(
         min_speech_duration=0.05,
         min_silence_duration=0.55,
         prefix_padding_duration=0.5,
         activation_threshold=0.5,
-        sample_rate=48000,  # Changed to 48kHz for WebRTC compatibility
+        sample_rate=16000,  # Silero VAD limitation - will resample internally
         force_cpu=True  # Prevents GPU contention
     )
     
@@ -181,8 +182,7 @@ class ResamplingAudioOutput(io.AudioOutput):
             options = rtc.TrackPublishOptions(
                 source=rtc.TrackSource.SOURCE_MICROPHONE,
                 dtx=False,  # Disable DTX for TTS
-                red=True,   # Enable redundancy
-                audio_bitrate=64000
+                red=True    # Enable redundancy
             )
             
             publication = await self.room.local_participant.publish_track(track, options)
@@ -211,6 +211,18 @@ class ResamplingAudioOutput(io.AudioOutput):
     async def aclose(self):
         """Close the audio output"""
         pass
+    
+    def clear_buffer(self):
+        """Clear any buffered audio"""
+        if hasattr(self, 'frame_buffer'):
+            self.frame_buffer.buffer.clear()
+    
+    async def flush(self):
+        """Flush any remaining audio"""
+        if hasattr(self, 'frame_buffer'):
+            frames = self.frame_buffer.flush()
+            for frame in frames:
+                self.audio_source.capture_frame(frame)
 
 
 async def test_audio_tone(room: rtc.Room, duration: float = 1.0):
@@ -242,7 +254,7 @@ async def test_audio_tone(room: rtc.Room, duration: float = 1.0):
                 num_channels=1,
                 samples_per_channel=480
             )
-            audio_source.capture_frame(frame)
+            await audio_source.capture_frame(frame)
             await asyncio.sleep(0.01)  # 10ms
     
     logger.info("✅ Test tone complete - you should have heard a beep!")
@@ -476,6 +488,10 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            port=8082  # Set static debug server port
+            port=8082,  # Set static debug server port
+            host="0.0.0.0",
+            ws_url=os.getenv("LIVEKIT_URL", "wss://polyglot-rag-assistant-3l6xagej.livekit.cloud"),
+            api_key=os.getenv("LIVEKIT_API_KEY"),
+            api_secret=os.getenv("LIVEKIT_API_SECRET")
         )
     )
