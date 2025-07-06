@@ -6,7 +6,7 @@ Uses OpenAI Realtime API with correct 2025 patterns
 import os
 import logging
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, date
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -105,14 +105,21 @@ async def search_flights(
             if flights:
                 flight_count = len(flights)
                 
-                # Get cheapest flight
-                cheapest = min(flights, key=lambda x: float(x.get('price', 999999)))
+                # Get cheapest flight (handle price strings with currency symbols)
+                def get_price(flight):
+                    price = flight.get('price', '999999')
+                    # Remove currency symbols and convert to float
+                    if isinstance(price, str):
+                        price = price.replace('$', '').replace(',', '').strip()
+                    return float(price)
+                
+                cheapest = min(flights, key=get_price)
                 
                 # Format top 3 flights for voice response
                 top_flights = []
                 for i, flight in enumerate(flights[:3], 1):
                     top_flights.append(
-                        f"Option {i}: {flight['airline']} for ${flight['price']}, "
+                        f"Option {i}: {flight['airline']} for {flight['price']}, "
                         f"departing at {flight['departure_time']}"
                     )
                 
@@ -291,6 +298,9 @@ CRITICAL LANGUAGE RULES:
 4. If user speaks English, respond ONLY in English
 5. Never mix languages in your response
 
+IMPORTANT: The speech-to-text system will detect the user's language automatically.
+You MUST respond in that same language
+
 LANGUAGE DETECTION:
 - "buscar vuelos" or "quiero volar" = Spanish → Respond in Spanish
 - "find flights" or "I want to fly" = English → Respond in English
@@ -311,7 +321,13 @@ CONVERSATION STYLE:
 - Keep responses concise but informative
 
 You can search for real flights using the search_flights function.
-Always confirm important details like dates and destinations.""",
+Always confirm important details like dates and destinations.
+
+DATE HANDLING:
+- When users mention dates without a year, assume they mean the current year (2025) or the next occurrence of that date
+- For example, if today is July 2025 and user says "October 7", they mean October 7, 2025
+- If the date has already passed this year, assume they mean next year
+- Always use YYYY-MM-DD format when calling search_flights""",
             tools=[search_flights]
         )
         
@@ -348,7 +364,9 @@ Always confirm important details like dates and destinations.""",
                 vad=vad,
                 stt=deepgram.STT(
                     model="nova-3",
-                    language="en",  # Default to English, will auto-detect other languages
+                    # Remove language parameter to enable auto-detection
+                    # Deepgram Nova 3 supports 40+ languages with auto-detection
+                    detect_language=True,  # Enable language detection
                     sample_rate=48000  # Match WebRTC requirement
                 ),
                 llm=openai.LLM(
