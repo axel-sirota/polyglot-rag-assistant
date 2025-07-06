@@ -51,13 +51,14 @@ class FlightAPIClient:
         if self.session:
             await self.session.close()
     
-    async def search_flights(self, origin: str, destination: str, date: str, preferred_airline: str = None) -> Dict[str, Any]:
+    async def search_flights(self, origin: str, destination: str, date: str, preferred_airline: str = None, cabin_class: str = "economy") -> Dict[str, Any]:
         """Call our API server which uses Amadeus SDK"""
         try:
             params = {
                 "origin": origin,
                 "destination": destination,
-                "departure_date": date
+                "departure_date": date,
+                "cabin_class": cabin_class
             }
             if preferred_airline:
                 params["preferred_airline"] = preferred_airline
@@ -83,7 +84,8 @@ async def search_flights(
     origin: str,
     destination: str,
     departure_date: str,
-    preferred_airline: str = None
+    preferred_airline: str = None,
+    cabin_class: str = "economy"
 ) -> Dict[str, Any]:
     """Search for available flights between cities.
     
@@ -91,16 +93,17 @@ async def search_flights(
         origin: City name or airport code (e.g., 'New York' or 'JFK')
         destination: City name or airport code (e.g., 'Los Angeles' or 'LAX')
         departure_date: Date in YYYY-MM-DD format
-        preferred_airline: Specific airline requested by user (e.g., 'American Airlines', 'United')
+        preferred_airline: Specific airline requested by user (e.g., 'American Airlines', 'United', 'Delta')
+        cabin_class: Class of service (economy, business, first)
     
     Returns:
         Flight search results with pricing and availability
     """
-    logger.info(f"Searching flights: {origin} -> {destination} on {departure_date}, airline: {preferred_airline}")
+    logger.info(f"Searching flights: {origin} -> {destination} on {departure_date}, airline: {preferred_airline}, class: {cabin_class}")
     
     async with FlightAPIClient() as client:
         try:
-            results = await client.search_flights(origin, destination, departure_date, preferred_airline)
+            results = await client.search_flights(origin, destination, departure_date, preferred_airline, cabin_class)
             
             if "error" in results:
                 return {
@@ -128,34 +131,56 @@ async def search_flights(
                 if preferred_airline:
                     airline_found = any(preferred_airline.lower() in flight.get('airline', '').lower() for flight in flights)
                 
-                # Format all flights for voice response with better formatting
-                flight_list = []
-                for i, flight in enumerate(flights[:10], 1):  # Show up to 10 flights
-                    flight_list.append(
-                        f"Option {i}: {flight['airline']} flight for {flight['price']}, "
-                        f"departing at {flight['departure_time']}"
-                    )
+                # Separate nonstop and connecting flights
+                nonstop_flights = [f for f in flights if f.get('stops', 0) == 0]
+                connecting_flights = [f for f in flights if f.get('stops', 0) > 0]
                 
-                # Create a more conversational response
-                if flight_count > 10:
-                    additional_msg = f" I'm showing you the first 10 options. Would you like to filter by airline, time, or price?"
-                else:
-                    additional_msg = ""
+                # Format response in human-friendly way
+                response_parts = []
+                
+                if nonstop_flights:
+                    response_parts.append("**Nonstop flights:**")
+                    for flight in nonstop_flights[:5]:
+                        response_parts.append(
+                            f"• {flight['airline']} - {flight['price']} "
+                            f"(departs {flight['departure_time']}, arrives {flight.get('arrival_time', 'TBD')})"
+                        )
+                
+                if connecting_flights:
+                    if nonstop_flights:
+                        response_parts.append("\n**Flights with stops (ordered by price):**")
+                    else:
+                        response_parts.append("**Flights with stops (ordered by price):**")
+                    
+                    # Sort by price
+                    connecting_sorted = sorted(connecting_flights, key=get_price)[:10]
+                    for flight in connecting_sorted:
+                        layover_info = flight.get('layovers', f"{flight.get('stops', 1)} stop(s)")
+                        response_parts.append(
+                            f"• {flight['airline']} - {flight['price']}, "
+                            f"{flight.get('duration', 'TBD')} total, {layover_info}"
+                        )
                 
                 # Add airline-specific message
                 airline_msg = ""
                 if preferred_airline and not airline_found:
-                    airline_msg = f"I couldn't find any {preferred_airline} flights on this route, but here are alternative options. "
+                    airline_msg = f"I couldn't find any {preferred_airline} flights on this route. Here are alternative options:\n\n"
                 elif preferred_airline and airline_found:
-                    airline_msg = f"Good news! I found {preferred_airline} flights among the results. "
+                    airline_msg = f"Found {preferred_airline} flights:\n\n"
+                
+                # Build final message
+                final_message = airline_msg + "\n".join(response_parts)
+                
+                # Add note about more options if needed
+                if flight_count > 15:
+                    final_message += f"\n\nShowing top results from {flight_count} total flights. Need specific times or airlines?"
                 
                 return {
                     "status": "success",
-                    "message": airline_msg + f"I found {flight_count} flights from {origin} to {destination}. "
-                              f"The cheapest is {cheapest['airline']} for {cheapest['price']}. "
-                              f"Here are all available options: " + ". ".join(flight_list) + additional_msg,
-                    "flights": flights[:10],  # Return top 10 for details
-                    "formatted_flights": flight_list,  # For potential UI display
+                    "message": final_message,
+                    "flights": flights[:15],  # Return more for chat display
+                    "nonstop_count": len(nonstop_flights),
+                    "connecting_count": len(connecting_flights),
                     "preferred_airline_found": airline_found
                 }
             else:
@@ -351,10 +376,21 @@ FLIGHT SEARCH:
 - Convert city names to appropriate format for search (e.g., "Nueva York" → "New York")
 
 AIRLINE PREFERENCE:
-- If user mentions a specific airline, extract it and pass as preferred_airline parameter
-- Common airline mentions: "American Airlines", "United", "Delta", "Southwest", "JetBlue", "Spirit", "Frontier", "Alaska"
+- ALWAYS extract airline if mentioned and pass as preferred_airline parameter
+- Common airlines: "Delta", "American Airlines", "United", "Southwest", "JetBlue", "Spirit", "Frontier", "Alaska"
 - Also recognize airline codes: "AA" (American), "UA" (United), "DL" (Delta), "WN" (Southwest), etc.
-- If specific airline not found, acknowledge and explain showing alternatives
+- If specific airline requested but not found, MUST try fallback APIs and acknowledge the search
+
+CABIN CLASS:
+- ALWAYS extract cabin class from user request and pass it to search_flights
+- Keywords to listen for:
+  * "business" or "business class" → cabin_class="business"
+  * "first" or "first class" → cabin_class="first"
+  * "premium" or "premium economy" → cabin_class="premium_economy"
+  * "economy" or no mention → cabin_class="economy"
+- When user says "search for business class flights" → MUST pass cabin_class="business"
+- When user says "what is the price in business class" → search again with cabin_class="business"
+- Default to "economy" if not specified
 
 CONVERSATION STYLE:
 - Be friendly, helpful, and conversational

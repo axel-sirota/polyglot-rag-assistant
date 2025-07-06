@@ -535,93 +535,158 @@ class FlightSearchServer:
         currency: str = "USD",
         preferred_airline: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Search for flights - Amadeus primary, AviationStack secondary, SerpAPI fallback, Browserless.io final fallback"""
+        """Search for flights - Run multiple APIs in parallel to enrich results"""
         try:
             # Convert city names to airport codes if needed
             origin_code = await self.get_airport_code(origin)
             dest_code = await self.get_airport_code(destination)
             
-            logger.info(f"Searching flights: {origin_code} -> {dest_code} on {departure_date}, preferred airline: {preferred_airline}")
+            logger.info(f"Searching flights: {origin_code} -> {dest_code} on {departure_date}, preferred airline: {preferred_airline}, class: {cabin_class}")
             
-            # Try Amadeus first (most reliable)
-            try:
-                flights = await self.amadeus_search.search_flights(
+            # Run APIs in parallel to get comprehensive results
+            tasks = []
+            
+            # Always try Amadeus
+            tasks.append(self._search_with_timeout(
+                self.amadeus_search.search_flights(
                     origin_code, dest_code, departure_date,
                     return_date, passengers, 0, cabin_class.upper(), currency
-                )
-                if flights:
-                    logger.info(f"Amadeus returned {len(flights)} flights")
-                    # Filter by preferred airline if specified
-                    if preferred_airline:
-                        filtered_flights = self._filter_by_airline(flights, preferred_airline)
-                        if filtered_flights:
-                            logger.info(f"Found {len(filtered_flights)} {preferred_airline} flights")
-                            return filtered_flights
-                        else:
-                            logger.info(f"No {preferred_airline} flights found in Amadeus results")
-                    else:
-                        return flights
-            except Exception as e:
-                logger.warning(f"Amadeus failed: {e}, trying fallback APIs")
+                ),
+                "Amadeus",
+                timeout=10.0
+            ))
             
-            # Try AviationStack as secondary option
+            # Always try AviationStack for additional data
             if self.aviationstack_key:
-                try:
-                    flights = await self._search_flights_aviationstack(
+                tasks.append(self._search_with_timeout(
+                    self._search_flights_aviationstack(
                         origin_code, dest_code, departure_date,
                         return_date, passengers, cabin_class
-                    )
-                    if flights:
-                        logger.info(f"AviationStack returned {len(flights)} flights")
-                        if preferred_airline:
-                            filtered_flights = self._filter_by_airline(flights, preferred_airline)
-                            if filtered_flights:
-                                return filtered_flights
-                        else:
-                            return flights
-                except Exception as e:
-                    logger.warning(f"AviationStack failed: {e}, trying SerpAPI fallback")
+                    ),
+                    "AviationStack",
+                    timeout=8.0
+                ))
             
-            # Fallback to SerpAPI
-            if self.serpapi_key:
-                try:
-                    flights = await self._search_flights_serpapi(
-                        origin_code, dest_code, departure_date, 
+            # If specific airline requested, also try SerpAPI for better coverage
+            if preferred_airline and self.serpapi_key:
+                tasks.append(self._search_with_timeout(
+                    self._search_flights_serpapi(
+                        origin_code, dest_code, departure_date,
                         return_date, passengers, cabin_class, currency
-                    )
-                    if flights and preferred_airline:
-                        filtered_flights = self._filter_by_airline(flights, preferred_airline)
-                        if filtered_flights:
-                            return filtered_flights
-                    elif flights:
-                        return flights
-                except Exception as e:
-                    logger.warning(f"SerpAPI also failed: {e}")
+                    ),
+                    "SerpAPI",
+                    timeout=8.0
+                ))
             
-            # If preferred airline requested but not found, try Browserless.io scraping
-            if preferred_airline and self.browserless_key:
-                logger.info(f"Trying Browserless.io to scrape {preferred_airline} website")
-                try:
-                    flights = await self._search_flights_browserless(
+            # Run all searches in parallel
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Merge results from all sources
+            all_flights = []
+            for i, result in enumerate(results):
+                if isinstance(result, list) and result:
+                    source = ["Amadeus", "AviationStack", "SerpAPI"][i] if i < 3 else "Unknown"
+                    logger.info(f"{source} returned {len(result)} flights")
+                    # Add source to each flight
+                    for flight in result:
+                        flight['data_source'] = source
+                    all_flights.extend(result)
+                elif isinstance(result, Exception):
+                    logger.warning(f"API error: {result}")
+            
+            # Remove duplicates and enrich data
+            enriched_flights = self._merge_and_enrich_flights(all_flights)
+            
+            # Filter by airline if requested
+            if preferred_airline:
+                airline_flights = self._filter_by_airline(enriched_flights, preferred_airline)
+                if not airline_flights and self.browserless_key:
+                    # Only use Browserless if specific airline not found
+                    logger.info(f"Airline {preferred_airline} not found, trying web scraping")
+                    scraped = await self._search_flights_browserless(
                         origin_code, dest_code, departure_date,
                         preferred_airline, passengers, cabin_class
                     )
-                    if flights:
-                        logger.info(f"Browserless.io found {len(flights)} {preferred_airline} flights")
-                        return flights
-                except Exception as e:
-                    logger.warning(f"Browserless.io failed: {e}")
+                    if scraped:
+                        enriched_flights.extend(scraped)
+                        airline_flights = scraped
+                
+                if airline_flights:
+                    return airline_flights
+                else:
+                    # Return all flights if specific airline not found
+                    logger.info(f"No {preferred_airline} flights found, returning all options")
+                    return enriched_flights
             
-            # If all fail or no keys available, return mock data
-            logger.info("Using mock flight data")
-            return await self._get_mock_flights(
-                origin_code, dest_code, departure_date,
-                return_date, passengers, cabin_class
-            )
+            return enriched_flights
                 
         except Exception as e:
             logger.error(f"Error searching flights: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+    
+    async def _search_with_timeout(self, coro, source_name: str, timeout: float) -> List[Dict[str, Any]]:
+        """Run a search coroutine with timeout"""
+        try:
+            result = await asyncio.wait_for(coro, timeout=timeout)
+            logger.info(f"{source_name} completed successfully")
+            return result
+        except asyncio.TimeoutError:
+            logger.warning(f"{source_name} timed out after {timeout}s")
+            return []
+        except Exception as e:
+            logger.error(f"{source_name} error: {e}")
+            return []
+    
+    def _merge_and_enrich_flights(self, all_flights: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Merge flights from multiple sources and remove duplicates"""
+        # Create a unique identifier for each flight
+        seen_flights = {}
+        enriched = []
+        
+        for flight in all_flights:
+            # Create a unique key based on flight number, departure time, or airline+times
+            flight_key = None
+            
+            # Try to use flight number as primary key
+            if flight.get('flight_number'):
+                flight_key = f"{flight['flight_number']}_{flight.get('departure_time', '')}"
+            # Fallback to airline + times
+            elif flight.get('airline') and flight.get('departure_time'):
+                flight_key = f"{flight['airline']}_{flight['departure_time']}_{flight.get('arrival_time', '')}"
+            
+            if flight_key:
+                if flight_key not in seen_flights:
+                    # First time seeing this flight
+                    seen_flights[flight_key] = flight
+                    enriched.append(flight)
+                else:
+                    # Merge data from different sources
+                    existing = seen_flights[flight_key]
+                    # Prefer data from more reliable sources
+                    if flight.get('data_source') == 'Amadeus' and existing.get('data_source') != 'Amadeus':
+                        # Amadeus data is usually most complete
+                        existing.update({k: v for k, v in flight.items() if v and not existing.get(k)})
+                    elif flight.get('data_source') == 'AviationStack':
+                        # AviationStack has good real-time data
+                        for key in ['departure_terminal', 'arrival_terminal', 'departure_gate', 'arrival_gate', 
+                                   'aircraft_registration', 'flight_status']:
+                            if flight.get(key) and not existing.get(key):
+                                existing[key] = flight[key]
+                    elif flight.get('data_source') == 'SerpAPI':
+                        # SerpAPI might have better pricing
+                        if flight.get('price') and not existing.get('price'):
+                            existing['price'] = flight['price']
+            else:
+                # No unique key, just add it
+                enriched.append(flight)
+        
+        # Sort by departure time and price
+        enriched.sort(key=lambda f: (
+            f.get('departure_time', 'ZZZ'),
+            float(re.sub(r'[^\d.]', '', str(f.get('price', '999999'))))
+        ))
+        
+        return enriched
     
     async def get_airport_code(self, city: str) -> str:
         """Convert city name to airport code"""

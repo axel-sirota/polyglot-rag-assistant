@@ -480,9 +480,9 @@ async def api_search_flights(
             departure_date=departure_date,
             return_date=return_date,
             passengers=passengers,
-            preferred_airline=preferred_airline,
             cabin_class=cabin_class,
-            currency=currency
+            currency=currency,
+            preferred_airline=preferred_airline
         )
         return {
             "success": True,

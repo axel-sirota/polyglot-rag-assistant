@@ -57,7 +57,15 @@ class AmadeusSDKFlightSearch:
             if children > 0:
                 params['children'] = children
             if travel_class != "ECONOMY":
-                params['travelClass'] = travel_class.upper()
+                # Map common names to Amadeus codes
+                class_mapping = {
+                    "ECONOMY": "ECONOMY",
+                    "BUSINESS": "BUSINESS",
+                    "FIRST": "FIRST",
+                    "PREMIUM_ECONOMY": "PREMIUM_ECONOMY"
+                }
+                amadeus_class = class_mapping.get(travel_class.upper(), travel_class.upper())
+                params['travelClass'] = amadeus_class
             if nonstop:
                 params['nonStop'] = 'true'
             
