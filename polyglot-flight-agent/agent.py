@@ -7,6 +7,7 @@ import os
 import logging
 from typing import Dict, Any
 from datetime import datetime, date
+import json
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -284,6 +285,26 @@ async def entrypoint(ctx: JobContext):
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
         logger.info("Successfully connected to room")
         
+        # Get language preference from room metadata or participant metadata
+        language = "en"  # Default to English
+        if ctx.room.metadata:
+            try:
+                room_metadata = json.loads(ctx.room.metadata)
+                language = room_metadata.get("language", "en")
+                logger.info(f"Language from room metadata: {language}")
+            except:
+                pass
+                
+        # Check participant metadata when they join
+        for participant in ctx.room.participants.values():
+            if participant.metadata:
+                try:
+                    participant_metadata = json.loads(participant.metadata)
+                    language = participant_metadata.get("language", language)
+                    logger.info(f"Language from participant {participant.identity}: {language}")
+                except:
+                    pass
+        
         # Test tone option - DISABLED (was causing weird audio)
         # logger.info("🔊 Playing test tone to verify audio...")
         # await test_audio_tone(ctx.room, duration=1.0)
@@ -296,24 +317,19 @@ async def entrypoint(ctx: JobContext):
         
         # Initialize agent with flight booking instructions
         agent = Agent(
-            instructions="""You are a multilingual flight booking assistant powered by LiveKit and Amadeus.
+            instructions=f"""You are a multilingual flight booking assistant powered by LiveKit and Amadeus.
 
-CRITICAL LANGUAGE RULES:
-1. DETECT the language the user is speaking in (Spanish, English, French, Chinese, etc.)
-2. ALWAYS respond in the EXACT SAME language the user used
-3. If user speaks Spanish, respond ONLY in Spanish
-4. If user speaks English, respond ONLY in English
-5. Never mix languages in your response
+LANGUAGE CONFIGURATION:
+- The user has pre-selected their preferred language: {language}
+- You MUST respond ONLY in this language throughout the conversation
+- The speech recognition is configured for this specific language
+- Do not switch languages even if the user appears to speak another language
 
-IMPORTANT: The speech-to-text system will detect the user's language automatically.
-You MUST respond in that same language
-
-LANGUAGE DETECTION:
-- "buscar vuelos" or "quiero volar" = Spanish → Respond in Spanish
-- "find flights" or "I want to fly" = English → Respond in English
-- "chercher des vols" = French → Respond in French
-- "查找航班" = Chinese → Respond in Chinese
-- And so on for all languages
+SUPPORTED LANGUAGES:
+- English (en), Spanish (es), French (fr), German (de), Italian (it)
+- Portuguese (pt), Chinese (zh), Japanese (ja), Korean (ko)
+- Arabic (ar), Hindi (hi), Russian (ru), Dutch (nl), Swedish (sv)
+- And 25+ more languages supported by Deepgram Nova-3
 
 FLIGHT SEARCH:
 - When users ask about flights, help them search using natural conversation
@@ -373,8 +389,7 @@ DATE HANDLING:
                 vad=vad,
                 stt=deepgram.STT(
                     model="nova-3",
-                    # Nova-3 supports 40+ languages automatically
-                    # No need for explicit language detection in streaming mode
+                    language=language,  # Use the language from metadata
                     sample_rate=48000  # Match WebRTC requirement
                 ),
                 llm=openai.LLM(
@@ -462,6 +477,20 @@ DATE HANDLING:
         def on_track_published(publication: rtc.LocalTrackPublication, participant: rtc.LocalParticipant):
             logger.info(f"📡 Track published: {publication.kind} by {participant.identity}")
         
+        # Handle participant metadata updates
+        @ctx.room.on("participant_metadata_changed")
+        def on_participant_metadata_changed(participant: rtc.Participant, prev_metadata: str):
+            if participant.metadata:
+                try:
+                    metadata = json.loads(participant.metadata)
+                    new_language = metadata.get("language")
+                    if new_language and new_language != language:
+                        logger.info(f"Language preference updated to: {new_language}")
+                        # Note: Cannot update STT language after initialization
+                        # User should reconnect with new language preference
+                except Exception as e:
+                    logger.error(f"Error parsing participant metadata: {e}")
+        
         # Handle audio track subscription (must be sync callback)
         @ctx.room.on("track_subscribed")
         def on_track_subscribed(
@@ -471,7 +500,14 @@ DATE HANDLING:
         ):
             if track.kind == rtc.TrackKind.KIND_AUDIO:
                 logger.info(f"🎤 Audio track subscribed from {participant.identity}")
-                # The AgentSession will automatically handle the audio stream
+                # Check if participant has language preference
+                if participant.metadata:
+                    try:
+                        metadata = json.loads(participant.metadata)
+                        participant_lang = metadata.get("language", "en")
+                        logger.info(f"Participant {participant.identity} language: {participant_lang}")
+                    except:
+                        pass
         
         # Start the session with the room
         logger.info("Starting agent session...")

@@ -276,6 +276,33 @@
             color: #5c6bc0;
         }
         
+        .language-selector {
+            margin-bottom: 20px;
+        }
+        
+        .language-selector label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .language-selector select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+        
+        .language-selector select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.1);
+        }
+        
         @keyframes fadeIn {
             from {
                 opacity: 0;
@@ -317,6 +344,52 @@
         <div class="sidebar">
             <div id="status" class="status disconnected">
                 Disconnected
+            </div>
+            
+            <div class="language-selector">
+                <label for="languageSelect">Select Language:</label>
+                <select id="languageSelect">
+                    <option value="en" selected>English</option>
+                    <option value="es">Español (Spanish)</option>
+                    <option value="fr">Français (French)</option>
+                    <option value="de">Deutsch (German)</option>
+                    <option value="it">Italiano (Italian)</option>
+                    <option value="pt">Português (Portuguese)</option>
+                    <option value="zh">中文 (Chinese)</option>
+                    <option value="ja">日本語 (Japanese)</option>
+                    <option value="ko">한국어 (Korean)</option>
+                    <option value="ar">العربية (Arabic)</option>
+                    <option value="hi">हिन्दी (Hindi)</option>
+                    <option value="ru">Русский (Russian)</option>
+                    <option value="nl">Nederlands (Dutch)</option>
+                    <option value="sv">Svenska (Swedish)</option>
+                    <option value="pl">Polski (Polish)</option>
+                    <option value="tr">Türkçe (Turkish)</option>
+                    <option value="he">עברית (Hebrew)</option>
+                    <option value="da">Dansk (Danish)</option>
+                    <option value="no">Norsk (Norwegian)</option>
+                    <option value="fi">Suomi (Finnish)</option>
+                    <option value="cs">Čeština (Czech)</option>
+                    <option value="el">Ελληνικά (Greek)</option>
+                    <option value="uk">Українська (Ukrainian)</option>
+                    <option value="id">Bahasa Indonesia</option>
+                    <option value="ms">Bahasa Melayu</option>
+                    <option value="th">ไทย (Thai)</option>
+                    <option value="vi">Tiếng Việt (Vietnamese)</option>
+                    <option value="hu">Magyar (Hungarian)</option>
+                    <option value="ro">Română (Romanian)</option>
+                    <option value="sk">Slovenčina (Slovak)</option>
+                    <option value="bg">Български (Bulgarian)</option>
+                    <option value="ca">Català (Catalan)</option>
+                    <option value="hr">Hrvatski (Croatian)</option>
+                    <option value="lt">Lietuvių (Lithuanian)</option>
+                    <option value="sl">Slovenščina (Slovenian)</option>
+                    <option value="lv">Latviešu (Latvian)</option>
+                    <option value="et">Eesti (Estonian)</option>
+                    <option value="ta">தமிழ் (Tamil)</option>
+                    <option value="te">తెలుగు (Telugu)</option>
+                    <option value="bn">বাংলা (Bengali)</option>
+                </select>
             </div>
             
             <div class="controls">
@@ -405,7 +478,8 @@
                         identity: `user-${Date.now()}`,
                         room: 'flight-demo',
                         metadata: JSON.stringify({
-                            agent_request: true
+                            agent_request: true,
+                            language: document.getElementById('languageSelect').value
                         })
                     })
                 });
