@@ -46,4 +46,4 @@ ENV CARTESIA_API_KEY=""
 ENV API_SERVER_URL="http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com"
 
 # Default command to run the agent in start mode
-CMD ["python", "agent.py", "start"]
+CMD ["python", "agent.py", "dev"]

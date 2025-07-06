@@ -347,7 +347,50 @@ async def entrypoint(ctx: JobContext):
             except:
                 pass
                 
-        # We'll get participant metadata when they join via events
+        # Wait for a participant with language metadata to join
+        # This gives us time to get the language preference from the UI
+        logger.info("Waiting for participant with language preference...")
+        wait_time = 0
+        while wait_time < 5:  # Wait up to 5 seconds
+            for participant in ctx.room.remote_participants.values():
+                if participant.metadata:
+                    try:
+                        metadata = json.loads(participant.metadata)
+                        participant_language = metadata.get("language")
+                        if participant_language:
+                            language = participant_language
+                            logger.info(f"Got language from participant {participant.identity}: {language}")
+                            wait_time = 10  # Exit loop
+                            break
+                    except:
+                        pass
+            
+            if wait_time < 10:
+                await asyncio.sleep(0.5)
+                wait_time += 0.5
+        
+        logger.info(f"Using language: {language}")
+        
+        # Map UI language codes to Deepgram language codes if needed
+        language_mapping = {
+            "es": "es",  # Spanish
+            "en": "en-US",  # English US
+            "fr": "fr",  # French
+            "de": "de",  # German
+            "it": "it",  # Italian
+            "pt": "pt",  # Portuguese
+            "zh": "zh",  # Chinese
+            "ja": "ja",  # Japanese
+            "ko": "ko",  # Korean
+            "ar": "ar",  # Arabic
+            "hi": "hi",  # Hindi
+            "ru": "ru",  # Russian
+            "nl": "nl",  # Dutch
+            "sv": "sv",  # Swedish
+        }
+        
+        deepgram_language = language_mapping.get(language, language)
+        logger.info(f"Deepgram language code: {deepgram_language}")
         
         # Test tone option - DISABLED (was causing weird audio)
         # logger.info("🔊 Playing test tone to verify audio...")
@@ -453,7 +496,7 @@ DATE HANDLING:
                 vad=vad,
                 stt=deepgram.STT(
                     model="nova-3",
-                    language=language,  # Use the language from metadata
+                    language=deepgram_language,  # Use the mapped language code
                     sample_rate=48000  # Match WebRTC requirement
                 ),
                 llm=openai.LLM(
@@ -600,24 +643,47 @@ DATE HANDLING:
         # The agent will now handle participants joining
         logger.info(f"✅ Agent session started successfully for room {ctx.room.name}")
         
-        # Initialize conversation with a greeting
+        # Initialize conversation with a greeting in the selected language
         # With STT-LLM-TTS pipeline, we can use session.say() for the initial greeting
-        logger.info("Sending initial greeting...")
+        logger.info(f"Sending initial greeting in language: {language}")
+        
+        # Define language-specific greetings
+        greetings = {
+            "en": "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
+            "es": "¡Hola! Soy tu asistente multilingüe de búsqueda de vuelos. ¿Cómo puedo ayudarte a encontrar vuelos hoy?",
+            "fr": "Bonjour! Je suis votre assistant multilingue de recherche de vols. Comment puis-je vous aider à trouver des vols aujourd'hui?",
+            "de": "Hallo! Ich bin Ihr mehrsprachiger Flugsuche-Assistent. Wie kann ich Ihnen heute bei der Flugsuche helfen?",
+            "it": "Ciao! Sono il tuo assistente multilingue per la ricerca di voli. Come posso aiutarti a trovare voli oggi?",
+            "pt": "Olá! Sou seu assistente multilíngue de busca de voos. Como posso ajudá-lo a encontrar voos hoje?",
+            "zh": "你好！我是您的多语言航班搜索助手。今天我可以如何帮助您查找航班？",
+            "ja": "こんにちは！私は多言語対応のフライト検索アシスタントです。今日はどのようなフライトをお探しですか？",
+            "ko": "안녕하세요! 저는 다국어 항공편 검색 도우미입니다. 오늘 항공편을 찾는 데 어떻게 도와드릴까요?",
+            "ar": "مرحباً! أنا مساعدك متعدد اللغات للبحث عن الرحلات الجوية. كيف يمكنني مساعدتك في العثور على رحلات اليوم؟",
+            "hi": "नमस्ते! मैं आपका बहुभाषी फ़्लाइट खोज सहायक हूं। आज मैं आपको फ़्लाइट खोजने में कैसे मदद कर सकता हूं?",
+            "ru": "Здравствуйте! Я ваш многоязычный помощник по поиску авиабилетов. Как я могу помочь вам найти рейсы сегодня?",
+            "nl": "Hallo! Ik ben uw meertalige vluchtzoekassistent. Hoe kan ik u vandaag helpen met het vinden van vluchten?",
+            "sv": "Hej! Jag är din flerspråkiga flygsökningsassistent. Hur kan jag hjälpa dig att hitta flyg idag?"
+        }
+        
+        # Get the greeting for the selected language, fallback to English
+        greeting_text = greetings.get(language, greetings["en"])
+        
         try:
             if use_realtime:
-                # For Realtime, use generate_reply
+                # For Realtime, use generate_reply with language-specific instruction
+                instructions = f"Greet the user warmly in {language} and ask how you can help them find flights today."
                 speech_handle = session.generate_reply(
-                    instructions="Greet the user warmly in a brief, natural way and ask how you can help them find flights today.",
+                    instructions=instructions,
                     allow_interruptions=True
                 )
                 logger.info(f"Speech handle created: {speech_handle}")
             else:
                 # For STT-LLM-TTS, we can use say() which works properly
                 speech_handle = session.say(
-                    "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
+                    greeting_text,
                     allow_interruptions=True
                 )
-                logger.info(f"Speech handle created: {speech_handle}")
+                logger.info(f"Speech handle created for greeting in {language}: {speech_handle}")
             logger.info("✅ Initial greeting sent")
         except Exception as e:
             logger.error(f"Failed to send greeting: {e}")
