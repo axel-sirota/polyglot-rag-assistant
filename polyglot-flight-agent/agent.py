@@ -339,74 +339,28 @@ async def entrypoint(ctx: JobContext):
         
         # Get language preference from room metadata or participant metadata
         language = "en"  # Default to English
-        
-        # Helper function to safely extract language from metadata
-        def get_language_from_metadata(metadata_string):
+        if ctx.room.metadata:
             try:
-                if not metadata_string:
-                    return None
-                metadata = json.loads(metadata_string)
-                return metadata.get("language")
-            except Exception as e:
-                logger.error(f"Error parsing metadata: {e}, metadata was: '{metadata_string}'")
-                return None
-        
-        # Check room metadata first
-        room_language = get_language_from_metadata(ctx.room.metadata)
-        if room_language:
-            language = room_language
-            logger.info(f"Language from room metadata: {language}")
-        
-        # Check participants that are already connected (no need to wait)
-        # Their metadata is immediately available upon connection
+                room_metadata = json.loads(ctx.room.metadata)
+                language = room_metadata.get("language", "en")
+                logger.info(f"Language from room metadata: {language}")
+            except:
+                pass
+                
+        # Check for participants already in the room
         for participant in ctx.room.remote_participants.values():
-            logger.info(f"Checking participant {participant.identity}, metadata: '{participant.metadata}'")
-            participant_language = get_language_from_metadata(participant.metadata)
-            if participant_language:
-                language = participant_language
-                logger.info(f"Got language from participant {participant.identity}: {language}")
-                break
+            if participant.metadata:
+                try:
+                    participant_metadata = json.loads(participant.metadata)
+                    participant_language = participant_metadata.get("language")
+                    if participant_language:
+                        language = participant_language
+                        logger.info(f"Got language from participant {participant.identity}: {language}")
+                        break
+                except Exception as e:
+                    logger.error(f"Error parsing participant metadata: {e}")
         
-        # Also listen for new participants joining
-        @ctx.room.on("participant_connected")
-        def on_participant_connected(participant: rtc.RemoteParticipant):
-            nonlocal language
-            logger.info(f"New participant connected: {participant.identity} with metadata: '{participant.metadata}'")
-            # Check their initial metadata immediately
-            participant_language = get_language_from_metadata(participant.metadata)
-            if participant_language and participant_language != language:
-                language = participant_language
-                logger.info(f"Updated language from new participant {participant.identity}: {language}")
-                # Note: Cannot update STT language after initialization
-                # This is logged for awareness
-        
-        logger.info(f"Using language: {language}")
-        
-        # Map UI language codes to Deepgram language codes
-        language_mapping = {
-            "es": "es",  # Spanish
-            "en": "en-US",  # English US
-            "fr": "fr",  # French
-            "de": "de",  # German
-            "it": "it",  # Italian
-            "pt": "pt",  # Portuguese
-            "zh": "zh",  # Chinese
-            "ja": "ja",  # Japanese
-            "ko": "ko",  # Korean
-            "ar": "ar",  # Arabic
-            "hi": "hi",  # Hindi
-            "ru": "ru",  # Russian
-            "nl": "nl",  # Dutch
-            "sv": "sv",  # Swedish
-        }
-        
-        deepgram_language = language_mapping.get(language, language)
-        logger.info(f"Deepgram language code: {deepgram_language}")
-        
-        # Debug Spanish specifically
-        if language == "es":
-            logger.info("🇪🇸 Spanish language detected - using Deepgram Spanish model")
-            logger.info(f"Deepgram will use language code: {deepgram_language}")
+        logger.info(f"Final language selection: {language}")
         
         # Test tone option - DISABLED (was causing weird audio)
         # logger.info("🔊 Playing test tone to verify audio...")
@@ -508,6 +462,21 @@ DATE HANDLING:
         if not use_realtime:
             # Use reliable STT-LLM-TTS pipeline that properly publishes audio tracks
             logger.info("🎵 Using STT-LLM-TTS pipeline for working audio output")
+            # Map UI language codes to Deepgram language codes
+            language_mapping = {
+                "es": "es",  # Spanish
+                "en": "en-US",  # English US
+                "fr": "fr",  # French
+                "de": "de",  # German
+                "it": "it",  # Italian
+                "pt": "pt",  # Portuguese
+                "zh": "zh",  # Chinese
+                "ja": "ja",  # Japanese
+                "ko": "ko",  # Korean
+            }
+            deepgram_language = language_mapping.get(language, "en-US")
+            logger.info(f"Using Deepgram language code: {deepgram_language}")
+            
             session = AgentSession(
                 vad=vad,
                 stt=deepgram.STT(
@@ -623,15 +592,16 @@ DATE HANDLING:
         # Handle participant metadata updates
         @ctx.room.on("participant_metadata_changed")
         def on_participant_metadata_changed(participant: rtc.Participant, prev_metadata: str):
-            logger.info(f"Metadata changed for {participant.identity}: '{prev_metadata}' -> '{participant.metadata}'")
-            new_language = get_language_from_metadata(participant.metadata)
-            old_language = get_language_from_metadata(prev_metadata)
-            
-            if new_language and new_language != old_language:
-                logger.info(f"Language preference updated from {old_language} to {new_language}")
-                # Note: Cannot update STT language after initialization
-                # User should reconnect with new language preference
-                logger.warning("Language change detected but STT cannot be reconfigured. User should reconnect.")
+            if participant.metadata:
+                try:
+                    metadata = json.loads(participant.metadata)
+                    new_language = metadata.get("language")
+                    if new_language and new_language != language:
+                        logger.info(f"Language preference updated to: {new_language}")
+                        # Note: Cannot update STT language after initialization
+                        # User should reconnect with new language preference
+                except Exception as e:
+                    logger.error(f"Error parsing participant metadata: {e}")
         
         # Handle audio track subscription (must be sync callback)
         @ctx.room.on("track_subscribed")
@@ -643,9 +613,13 @@ DATE HANDLING:
             if track.kind == rtc.TrackKind.KIND_AUDIO:
                 logger.info(f"🎤 Audio track subscribed from {participant.identity}")
                 # Check if participant has language preference
-                participant_lang = get_language_from_metadata(participant.metadata)
-                if participant_lang:
-                    logger.info(f"Participant {participant.identity} language: {participant_lang}")
+                if participant.metadata:
+                    try:
+                        metadata = json.loads(participant.metadata)
+                        participant_lang = metadata.get("language", "en")
+                        logger.info(f"Participant {participant.identity} language: {participant_lang}")
+                    except:
+                        pass
         
         # Start the session with the room
         logger.info("Starting agent session...")
@@ -654,36 +628,21 @@ DATE HANDLING:
         # The agent will now handle participants joining
         logger.info(f"✅ Agent session started successfully for room {ctx.room.name}")
         
-        # Initialize conversation with a greeting in the selected language
-        logger.info(f"Sending initial greeting in language: {language}")
-        
-        # Language-specific greetings
-        greetings = {
-            "en": "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
-            "es": "¡Hola! Soy tu asistente multilingüe de búsqueda de vuelos. ¿Cómo puedo ayudarte a encontrar vuelos hoy?",
-            "fr": "Bonjour! Je suis votre assistant multilingue de recherche de vols. Comment puis-je vous aider à trouver des vols aujourd'hui?",
-            "de": "Hallo! Ich bin Ihr mehrsprachiger Flugsuche-Assistent. Wie kann ich Ihnen heute bei der Flugsuche helfen?",
-            "it": "Ciao! Sono il tuo assistente multilingue per la ricerca di voli. Come posso aiutarti a trovare voli oggi?",
-            "pt": "Olá! Sou seu assistente multilíngue de busca de voos. Como posso ajudá-lo a encontrar voos hoje?",
-            "zh": "你好！我是您的多语言航班搜索助手。今天我可以如何帮助您查找航班？",
-            "ja": "こんにちは！私は多言語対応のフライト検索アシスタントです。今日はどのようなフライトをお探しですか？",
-            "ko": "안녕하세요! 저는 다국어 항공편 검색 도우미입니다. 오늘 항공편을 찾는 데 어떻게 도와드릴까요?",
-        }
-        
-        greeting_message = greetings.get(language, greetings["en"])
-        
+        # Initialize conversation with a greeting
+        # With STT-LLM-TTS pipeline, we can use session.say() for the initial greeting
+        logger.info("Sending initial greeting...")
         try:
             if use_realtime:
                 # For Realtime, use generate_reply
                 speech_handle = session.generate_reply(
-                    instructions=f"Say exactly this greeting: {greeting_message}",
+                    instructions="Greet the user warmly in a brief, natural way and ask how you can help them find flights today.",
                     allow_interruptions=True
                 )
                 logger.info(f"Speech handle created: {speech_handle}")
             else:
                 # For STT-LLM-TTS, we can use say() which works properly
                 speech_handle = session.say(
-                    greeting_message,
+                    "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
                     allow_interruptions=True
                 )
                 logger.info(f"Speech handle created: {speech_handle}")
@@ -708,7 +667,6 @@ if __name__ == "__main__":
             ws_url=os.getenv("LIVEKIT_URL", "wss://polyglot-rag-assistant-3l6xagej.livekit.cloud"),
             api_key=os.getenv("LIVEKIT_API_KEY"),
             api_secret=os.getenv("LIVEKIT_API_SECRET"),
-            num_idle_processes=1,  # Only 1 process to prevent multiple agents in same room
-            shutdown_process_after_idle_timeout=10.0  # Cleanup idle processes faster
+            num_idle_processes=1  # Only 1 process to prevent multiple agents in same room
         )
     )
