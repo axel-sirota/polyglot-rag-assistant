@@ -348,7 +348,7 @@
             
             <div class="language-selector">
                 <label for="languageSelect">Select Language:</label>
-                <select id="languageSelect">
+                <select id="languageSelect" onchange="handleLanguageChange()">
                     <!-- English languages -->
                     <option value="en" selected>English</option>
                     
@@ -482,6 +482,13 @@
                 }
                 console.log('Using participant identity:', participantIdentity);
                 
+                // Get selected language
+                const selectedLanguage = document.getElementById('languageSelect').value;
+                
+                // Create language-specific room name
+                const roomName = `flight-demo-${selectedLanguage}`;
+                console.log('Connecting to room:', roomName);
+                
                 // Get a token from our backend
                 const response = await fetch('/api/livekit-token', {
                     method: 'POST',
@@ -490,9 +497,9 @@
                     },
                     body: JSON.stringify({
                         identity: participantIdentity,
-                        room: 'flight-demo',
+                        room: roomName,  // Use language-specific room
                         metadata: JSON.stringify({
-                            language: document.getElementById('languageSelect').value
+                            language: selectedLanguage
                         })
                     })
                 });
@@ -527,8 +534,8 @@
                 // Connect to room
                 await room.connect(LIVEKIT_URL, token);
                 
-                updateStatus('Connected to LiveKit', 'connected');
-                addMessage('system', 'Connected! Waiting for AI assistant...');
+                updateStatus(`Connected to LiveKit (${selectedLanguage})`, 'connected');
+                addMessage('system', `Connected to ${selectedLanguage} room! Waiting for AI assistant...`);
                 
                 // Enable microphone
                 await room.localParticipant.setMicrophoneEnabled(true);
@@ -719,6 +726,20 @@
         function simulateAgentTranscription(text) {
             if (agentSpeaking) {
                 addMessage('assistant', text);
+            }
+        }
+        
+        // Handle language change
+        async function handleLanguageChange() {
+            if (room && room.state === 'connected') {
+                // If connected, disconnect and reconnect with new language
+                addMessage('system', 'Switching language... Please wait.');
+                await disconnect();
+                
+                // Small delay to ensure clean disconnect
+                setTimeout(() => {
+                    connect();
+                }, 500);
             }
         }
     </script>

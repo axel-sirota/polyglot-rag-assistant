@@ -15,7 +15,9 @@ export default async function handler(req, res) {
       metadata: req.body.metadata,
       // Set room metadata but NO agent_name for automatic dispatch
       roomMetadata: JSON.stringify({
-        require_agent: true
+        require_agent: true,
+        // Add language to room metadata as fallback for ECS bug
+        language: req.body.metadata ? JSON.parse(req.body.metadata).language : 'en'
         // agent_name removed - this was preventing automatic dispatch!
       })
     };
