@@ -4,6 +4,8 @@
 
 # Load environment variables
 source ../.env
+docker stop polyglot-flight-agent
+docker rm polyglot-flight-agent
 
 # Build the Docker image
 echo "Building Docker image..."
