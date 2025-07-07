@@ -21,6 +21,8 @@ from livekit import rtc
 import aiohttp
 import asyncio
 import numpy as np
+import time
+from typing import Dict, Optional
 
 # Import our audio utilities
 from audio_utils import resample_audio, create_audio_frame_48khz, generate_test_tone, AudioFrameBuffer
@@ -34,6 +36,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Global dictionary to store session state outside of AgentSession
+# This enables persistence across disconnections
+PARTICIPANT_SESSIONS: Dict[str, Dict] = {}
 
 
 class FlightAPIClient:
@@ -339,7 +345,7 @@ async def test_audio_tone(room: rtc.Room, duration: float = 1.0):
 
 
 async def entrypoint(ctx: JobContext):
-    """Main entry point for the LiveKit agent"""
+    """Main entry point for the LiveKit agent with version-safe persistence"""
     logger.info("="*60)
     logger.info(f"🚀 AGENT STARTING - Room: {ctx.room.name}")
     logger.info(f"📋 Job ID: {ctx.job.id if hasattr(ctx.job, 'id') else 'N/A'}")
@@ -347,6 +353,9 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"📊 Job metadata: {ctx.job.metadata if hasattr(ctx.job, 'metadata') else 'None'}")
     logger.info(f"📊 Room metadata: {ctx.room.metadata}")
     logger.info("="*60)
+    
+    # Track if we've greeted participants already
+    greeted_participants = set()
     
     # Note: You may see a 404 error from OpenAI during startup - this is harmless
     # It's just the OpenAI client library checking for available endpoints
@@ -431,6 +440,8 @@ LANGUAGE CONFIGURATION:
 - You MUST respond ONLY in this language throughout the conversation
 - The speech recognition is configured for this specific language
 - Do not switch languages even if the user appears to speak another language
+
+IMPORTANT: This is a persistent session. If someone rejoins after disconnecting, welcome them back naturally and continue where you left off.
 
 SUPPORTED LANGUAGES:
 - English (en), Spanish (es), French (fr), German (de), Italian (it)
@@ -662,6 +673,87 @@ DATE HANDLING:
                 else:
                     logger.debug(f"📊 Metrics: {event.metrics.type}")
         
+        # ADD THESE NEW EVENT HANDLERS for persistence
+        @ctx.room.on("participant_connected")
+        async def on_participant_connected(participant: rtc.RemoteParticipant):
+            """Handle new and returning participants"""
+            logger.info(f"👤 Participant connected: {participant.identity}")
+            
+            # Check if this is a returning participant
+            if participant.identity in PARTICIPANT_SESSIONS:
+                # They're back!
+                session_data = PARTICIPANT_SESSIONS[participant.identity]
+                reconnect_count = session_data.get('reconnect_count', 0) + 1
+                session_data['reconnect_count'] = reconnect_count
+                session_data['last_seen'] = time.time()
+                
+                logger.info(f"♻️ Welcome back {participant.identity}! Reconnection #{reconnect_count}")
+                
+                # Welcome them back after a short delay
+                if participant.identity not in greeted_participants:
+                    greeted_participants.add(participant.identity)
+                    await asyncio.sleep(1.5)  # Wait for audio to establish
+                    
+                    welcome_messages = {
+                        "en": "Welcome back! I'm still here. How can I continue helping you with your flight search?",
+                        "es": "¡Bienvenido de nuevo! Sigo aquí. ¿Cómo puedo seguir ayudándote con tu búsqueda de vuelos?",
+                        "fr": "Bon retour! Je suis toujours là. Comment puis-je continuer à vous aider avec votre recherche de vol?",
+                        "de": "Willkommen zurück! Ich bin immer noch hier. Wie kann ich Ihnen weiterhin bei Ihrer Flugsuche helfen?",
+                        "it": "Bentornato! Sono ancora qui. Come posso continuare ad aiutarti con la ricerca del volo?",
+                        "pt": "Bem-vindo de volta! Ainda estou aqui. Como posso continuar ajudando com sua busca de voos?",
+                    }
+                    
+                    message = welcome_messages.get(language, welcome_messages["en"])
+                    session.say(message, allow_interruptions=True)
+            else:
+                # New participant
+                PARTICIPANT_SESSIONS[participant.identity] = {
+                    'joined_at': time.time(),
+                    'last_seen': time.time(),
+                    'reconnect_count': 0,
+                    'language': language
+                }
+                
+                # Send initial greeting only to first participant
+                if len(greeted_participants) == 0 and participant.identity not in greeted_participants:
+                    greeted_participants.add(participant.identity)
+                    await asyncio.sleep(1.5)
+                    
+                    # Language-specific greetings
+                    greetings = {
+                        "en": "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
+                        "es": "¡Hola! Soy tu asistente multilingüe de búsqueda de vuelos. ¿Cómo puedo ayudarte a encontrar vuelos hoy?",
+                        "fr": "Bonjour! Je suis votre assistant multilingue de recherche de vols. Comment puis-je vous aider à trouver des vols aujourd'hui?",
+                        "de": "Hallo! Ich bin Ihr mehrsprachiger Flugsuche-Assistent. Wie kann ich Ihnen heute bei der Flugsuche helfen?",
+                        "it": "Ciao! Sono il tuo assistente multilingue per la ricerca di voli. Come posso aiutarti a trovare voli oggi?",
+                        "pt": "Olá! Sou seu assistente multilíngue de busca de voos. Como posso ajudá-lo a encontrar voos hoje?",
+                    }
+                    
+                    greeting_message = greetings.get(language, greetings["en"])
+                    session.say(greeting_message, allow_interruptions=True)
+        
+        @ctx.room.on("participant_disconnected")
+        async def on_participant_disconnected(participant: rtc.RemoteParticipant):
+            """Handle disconnections but keep session data"""
+            logger.info(f"👤 Participant disconnected: {participant.identity}")
+            
+            # Update last seen but DON'T delete the session
+            if participant.identity in PARTICIPANT_SESSIONS:
+                PARTICIPANT_SESSIONS[participant.identity]['last_seen'] = time.time()
+                
+                # Clean up after 5 minutes
+                identity_to_clean = participant.identity
+                async def cleanup_old_session():
+                    await asyncio.sleep(300)  # 5 minutes
+                    if identity_to_clean in PARTICIPANT_SESSIONS:
+                        last_seen = PARTICIPANT_SESSIONS[identity_to_clean]['last_seen']
+                        if time.time() - last_seen > 299:
+                            logger.info(f"🗑️ Cleaning up old session for {identity_to_clean}")
+                            del PARTICIPANT_SESSIONS[identity_to_clean]
+                            greeted_participants.discard(identity_to_clean)
+                
+                asyncio.create_task(cleanup_old_session())
+        
         # Monitor track publishing
         @ctx.room.on("track_published")
         def on_track_published(publication: rtc.LocalTrackPublication, participant: rtc.LocalParticipant):
@@ -720,44 +812,11 @@ DATE HANDLING:
         logger.info(f"🏠 Room: {ctx.room.name}")
         logger.info(f"🌍 Language: {language}")
         
-        # Initialize conversation with a greeting
-        logger.info("="*50)
-        logger.info("👋 SENDING INITIAL GREETING...")
-        logger.info("="*50)
-        
-        # Language-specific greetings
-        greetings = {
-            "en": "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
-            "es": "¡Hola! Soy tu asistente multilingüe de búsqueda de vuelos. ¿Cómo puedo ayudarte a encontrar vuelos hoy?",
-            "fr": "Bonjour! Je suis votre assistant multilingue de recherche de vols. Comment puis-je vous aider à trouver des vols aujourd'hui?",
-            "de": "Hallo! Ich bin Ihr mehrsprachiger Flugsuche-Assistent. Wie kann ich Ihnen heute bei der Flugsuche helfen?",
-            "it": "Ciao! Sono il tuo assistente multilingue per la ricerca di voli. Come posso aiutarti a trovare voli oggi?",
-            "pt": "Olá! Sou seu assistente multilíngue de busca de voos. Como posso ajudá-lo a encontrar voos hoje?",
-        }
-        
-        greeting_message = greetings.get(language, greetings["en"])
-        logger.info(f"📝 Greeting language: {language}")
-        logger.info(f"💬 Greeting message: {greeting_message}")
-        
-        try:
-            if use_realtime:
-                logger.info("🎯 Using OpenAI Realtime for greeting")
-                speech_handle = session.generate_reply(
-                    instructions=f"Say exactly this greeting: {greeting_message}",
-                    allow_interruptions=True
-                )
-            else:
-                logger.info("🎯 Using session.say() for greeting")
-                speech_handle = session.say(
-                    greeting_message,
-                    allow_interruptions=True
-                )
-            logger.info(f"✅ Greeting initiated - speech handle: {speech_handle}")
-        except Exception as e:
-            logger.error(f"❌ Failed to send greeting: {e}")
-            logger.error(f"   Error type: {type(e).__name__}")
-            logger.error(f"   Error details: {str(e)}")
-            # Continue anyway - the agent will still respond to user input
+        # Check for existing participants and trigger the connection event
+        logger.info("👥 Checking for existing participants...")
+        for participant in ctx.room.remote_participants.values():
+            logger.info(f"   - Found participant: {participant.identity}")
+            await on_participant_connected(participant)
         
     except Exception as e:
         logger.error("="*60)
@@ -804,7 +863,10 @@ if __name__ == "__main__":
         api_key=os.getenv("LIVEKIT_API_KEY"),
         api_secret=os.getenv("LIVEKIT_API_SECRET"),
         num_idle_processes=1,
-        shutdown_process_timeout=30
+        # Just add these three lines for session persistence:
+        shutdown_process_timeout=90.0,  # Wait longer before shutdown
+        drain_timeout=120,  # 2 minutes to drain
+        initialize_process_timeout=30.0,
     )
     
     # Check if agent_name exists and is not empty
