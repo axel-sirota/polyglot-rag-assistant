@@ -673,10 +673,10 @@ DATE HANDLING:
                 else:
                     logger.debug(f"📊 Metrics: {event.metrics.type}")
         
-        # ADD THESE NEW EVENT HANDLERS for persistence
+        # ADD THESE NEW EVENT HANDLERS for persistence (MUST BE SYNC!)
         @ctx.room.on("participant_connected")
-        async def on_participant_connected(participant: rtc.RemoteParticipant):
-            """Handle new and returning participants"""
+        def on_participant_connected(participant: rtc.RemoteParticipant):
+            """Handle new and returning participants - SYNC callback"""
             logger.info(f"👤 Participant connected: {participant.identity}")
             
             # Check if this is a returning participant
@@ -692,19 +692,23 @@ DATE HANDLING:
                 # Welcome them back after a short delay
                 if participant.identity not in greeted_participants:
                     greeted_participants.add(participant.identity)
-                    await asyncio.sleep(1.5)  # Wait for audio to establish
                     
-                    welcome_messages = {
-                        "en": "Welcome back! I'm still here. How can I continue helping you with your flight search?",
-                        "es": "¡Bienvenido de nuevo! Sigo aquí. ¿Cómo puedo seguir ayudándote con tu búsqueda de vuelos?",
-                        "fr": "Bon retour! Je suis toujours là. Comment puis-je continuer à vous aider avec votre recherche de vol?",
-                        "de": "Willkommen zurück! Ich bin immer noch hier. Wie kann ich Ihnen weiterhin bei Ihrer Flugsuche helfen?",
-                        "it": "Bentornato! Sono ancora qui. Come posso continuare ad aiutarti con la ricerca del volo?",
-                        "pt": "Bem-vindo de volta! Ainda estou aqui. Como posso continuar ajudando com sua busca de voos?",
-                    }
+                    async def send_welcome_back():
+                        await asyncio.sleep(1.5)  # Wait for audio to establish
+                        
+                        welcome_messages = {
+                            "en": "Welcome back! I'm still here. How can I continue helping you with your flight search?",
+                            "es": "¡Bienvenido de nuevo! Sigo aquí. ¿Cómo puedo seguir ayudándote con tu búsqueda de vuelos?",
+                            "fr": "Bon retour! Je suis toujours là. Comment puis-je continuer à vous aider avec votre recherche de vol?",
+                            "de": "Willkommen zurück! Ich bin immer noch hier. Wie kann ich Ihnen weiterhin bei Ihrer Flugsuche helfen?",
+                            "it": "Bentornato! Sono ancora qui. Come posso continuare ad aiutarti con la ricerca del volo?",
+                            "pt": "Bem-vindo de volta! Ainda estou aqui. Como posso continuar ajudando com sua busca de voos?",
+                        }
+                        
+                        message = welcome_messages.get(language, welcome_messages["en"])
+                        session.say(message, allow_interruptions=True)
                     
-                    message = welcome_messages.get(language, welcome_messages["en"])
-                    session.say(message, allow_interruptions=True)
+                    asyncio.create_task(send_welcome_back())
             else:
                 # New participant
                 PARTICIPANT_SESSIONS[participant.identity] = {
@@ -717,24 +721,28 @@ DATE HANDLING:
                 # Send initial greeting only to first participant
                 if len(greeted_participants) == 0 and participant.identity not in greeted_participants:
                     greeted_participants.add(participant.identity)
-                    await asyncio.sleep(1.5)
                     
-                    # Language-specific greetings
-                    greetings = {
-                        "en": "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
-                        "es": "¡Hola! Soy tu asistente multilingüe de búsqueda de vuelos. ¿Cómo puedo ayudarte a encontrar vuelos hoy?",
-                        "fr": "Bonjour! Je suis votre assistant multilingue de recherche de vols. Comment puis-je vous aider à trouver des vols aujourd'hui?",
-                        "de": "Hallo! Ich bin Ihr mehrsprachiger Flugsuche-Assistent. Wie kann ich Ihnen heute bei der Flugsuche helfen?",
-                        "it": "Ciao! Sono il tuo assistente multilingue per la ricerca di voli. Come posso aiutarti a trovare voli oggi?",
-                        "pt": "Olá! Sou seu assistente multilíngue de busca de voos. Como posso ajudá-lo a encontrar voos hoje?",
-                    }
+                    async def send_greeting():
+                        await asyncio.sleep(1.5)
+                        
+                        # Language-specific greetings
+                        greetings = {
+                            "en": "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
+                            "es": "¡Hola! Soy tu asistente multilingüe de búsqueda de vuelos. ¿Cómo puedo ayudarte a encontrar vuelos hoy?",
+                            "fr": "Bonjour! Je suis votre assistant multilingue de recherche de vols. Comment puis-je vous aider à trouver des vols aujourd'hui?",
+                            "de": "Hallo! Ich bin Ihr mehrsprachiger Flugsuche-Assistent. Wie kann ich Ihnen heute bei der Flugsuche helfen?",
+                            "it": "Ciao! Sono il tuo assistente multilingue per la ricerca di voli. Come posso aiutarti a trovare voli oggi?",
+                            "pt": "Olá! Sou seu assistente multilíngue de busca de voos. Como posso ajudá-lo a encontrar voos hoje?",
+                        }
+                        
+                        greeting_message = greetings.get(language, greetings["en"])
+                        session.say(greeting_message, allow_interruptions=True)
                     
-                    greeting_message = greetings.get(language, greetings["en"])
-                    session.say(greeting_message, allow_interruptions=True)
+                    asyncio.create_task(send_greeting())
         
         @ctx.room.on("participant_disconnected")
-        async def on_participant_disconnected(participant: rtc.RemoteParticipant):
-            """Handle disconnections but keep session data"""
+        def on_participant_disconnected(participant: rtc.RemoteParticipant):
+            """Handle disconnections but keep session data - SYNC callback"""
             logger.info(f"👤 Participant disconnected: {participant.identity}")
             
             # Update last seen but DON'T delete the session
@@ -743,6 +751,7 @@ DATE HANDLING:
                 
                 # Clean up after 5 minutes
                 identity_to_clean = participant.identity
+                
                 async def cleanup_old_session():
                     await asyncio.sleep(300)  # 5 minutes
                     if identity_to_clean in PARTICIPANT_SESSIONS:
@@ -816,7 +825,7 @@ DATE HANDLING:
         logger.info("👥 Checking for existing participants...")
         for participant in ctx.room.remote_participants.values():
             logger.info(f"   - Found participant: {participant.identity}")
-            await on_participant_connected(participant)
+            on_participant_connected(participant)  # Call sync function directly
         
     except Exception as e:
         logger.error("="*60)

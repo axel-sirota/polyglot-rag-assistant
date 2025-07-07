@@ -292,6 +292,14 @@
             connectBtn.disabled = true;
             
             try {
+                // Get or create persistent participant identity
+                let participantIdentity = localStorage.getItem('participantIdentity');
+                if (!participantIdentity) {
+                    participantIdentity = `user-${Date.now()}`;
+                    localStorage.setItem('participantIdentity', participantIdentity);
+                }
+                console.log('Using participant identity:', participantIdentity);
+                
                 // Get a token from our local backend
                 const response = await fetch(`${API_URL}/api/livekit/token`, {
                     method: 'POST',
@@ -299,7 +307,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        identity: `user-${Date.now()}`,
+                        identity: participantIdentity,
                         room: 'flight-demo',
                         // Trigger agent with metadata
                         metadata: JSON.stringify({
