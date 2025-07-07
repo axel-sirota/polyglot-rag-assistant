@@ -567,7 +567,8 @@ DATE HANDLING:
                 stt=deepgram.STT(
                     model=deepgram_config["model"],
                     language=deepgram_config["language"],
-                    sample_rate=48000  # Match WebRTC requirement
+                    sample_rate=48000,  # Match WebRTC requirement
+                    detect_language=False  # CRITICAL: Prevent language nullification
                 ),
                 llm=openai.LLM(
                     model="gpt-4o",  # Use full GPT-4 for better multilingual support
@@ -577,6 +578,13 @@ DATE HANDLING:
                 turn_detection="vad"
             )
             logger.info("✅ STT-LLM-TTS pipeline configured successfully!")
+            
+            # Debug: Log actual STT configuration
+            if hasattr(session.stt, '_opts'):
+                logger.info(f"🔍 Actual STT options after creation:")
+                logger.info(f"   - model: {getattr(session.stt._opts, 'model', 'unknown')}")
+                logger.info(f"   - language: {getattr(session.stt._opts, 'language', 'unknown')}")
+                logger.info(f"   - detect_language: {getattr(session.stt._opts, 'detect_language', 'unknown')}")
         
         # Create and configure custom audio output with resampling
         logger.info("="*50)

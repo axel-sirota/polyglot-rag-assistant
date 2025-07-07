@@ -109,6 +109,12 @@ manager = ConnectionManager()
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
+    logger.info("="*60)
+    logger.info("🚀 Polyglot Flight Assistant API Server Starting")
+    logger.info(f"📅 Server time: {datetime.now().isoformat()}")
+    logger.info(f"🔑 LiveKit URL: {os.getenv('LIVEKIT_URL', 'Not set')}")
+    logger.info(f"🌍 API Server URL: {os.getenv('API_SERVER_URL', 'Not set')}")
+    logger.info("="*60)
     logger.info("API server started - voice processors will be created per connection")
 
 # Root endpoint
@@ -389,10 +395,14 @@ async def get_livekit_token(request: Request):
     """Generate a LiveKit access token using SDK"""
     try:
         data = await request.json()
+        logger.info(f"Token request received: {json.dumps(data)}")
+        
         identity = data.get("identity", f"user-{int(time.time())}")
         room_name = data.get("room", "flight-assistant")
         name = data.get("name", identity)
         participant_metadata = data.get("metadata", "")
+        
+        logger.info(f"Token params - Room: {room_name}, Identity: {identity}, Metadata: {participant_metadata}")
         
         # Get LiveKit credentials from environment
         api_key = os.getenv("LIVEKIT_API_KEY")
@@ -404,27 +414,43 @@ async def get_livekit_token(request: Request):
         
         # Create room with metadata to trigger agent dispatch
         room_metadata = data.get("roomMetadata")
+        logger.info(f"Room metadata from request: {room_metadata}")
+        
         if room_metadata:
             try:
-                # Create RoomServiceClient to create/update room
-                from livekit.api import RoomServiceClient
-                room_service = RoomServiceClient(
-                    host=livekit_url.replace("wss://", "https://").replace("ws://", "http://"),
+                logger.info(f"Attempting to create/update room: {room_name}")
+                
+                # Create LiveKitAPI instance
+                lkapi = api.LiveKitAPI(
+                    livekit_url.replace("wss://", "https://").replace("ws://", "http://"),
                     api_key=api_key,
                     api_secret=api_secret
                 )
                 
                 # Create or update room with metadata
-                await room_service.create_room(
+                metadata_str = room_metadata if isinstance(room_metadata, str) else json.dumps(room_metadata)
+                logger.info(f"Creating room with metadata string: {metadata_str}")
+                
+                room_info = await lkapi.room.create_room(
                     api.CreateRoomRequest(
                         name=room_name,
-                        metadata=room_metadata if isinstance(room_metadata, str) else json.dumps(room_metadata)
+                        metadata=metadata_str
                     )
                 )
-                logger.info(f"Created/updated room {room_name} with metadata: {room_metadata}")
+                
+                logger.info(f"✅ Successfully created/updated room {room_name}")
+                logger.info(f"   Room SID: {room_info.sid}")
+                logger.info(f"   Room metadata: {room_info.metadata}")
+                
+                # Close the API connection
+                await lkapi.aclose()
+                
             except Exception as e:
-                logger.warning(f"Failed to create room with metadata: {e}")
+                logger.error(f"❌ Failed to create room with metadata: {type(e).__name__}: {e}")
+                logger.error(f"   Full error: {e}", exc_info=True)
                 # Continue anyway - room will be created when first participant joins
+        else:
+            logger.warning(f"⚠️ No room metadata provided for room: {room_name}")
         
         # Create access token using LiveKit SDK
         token = api.AccessToken(
@@ -449,13 +475,18 @@ async def get_livekit_token(request: Request):
         
         jwt_token = token.to_jwt()
         
-        return {
+        response_data = {
             "token": jwt_token,
             "identity": identity,
             "room": room_name,
             "name": name,
             "metadata": room_metadata
         }
+        
+        logger.info(f"✅ Token generated successfully for room: {room_name}")
+        logger.info(f"   Response (without token): {json.dumps({k: v for k, v in response_data.items() if k != 'token'})}")
+        
+        return response_data
         
     except Exception as e:
         logger.error(f"Token generation failed: {e}")
