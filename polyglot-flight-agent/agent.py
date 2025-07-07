@@ -9,11 +9,6 @@ from typing import Dict, Any
 from datetime import datetime, date
 import json
 import asyncio
-import sys
-from pathlib import Path
-
-# Add parent directory to path to import services
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -33,7 +28,7 @@ from typing import Dict, Optional
 from audio_utils import resample_audio, create_audio_frame_48khz, generate_test_tone, AudioFrameBuffer
 
 # Import language configuration
-from services.language_config import get_deepgram_config, log_language_configuration, get_language_name
+from language_config import get_deepgram_config, log_language_configuration, get_language_name
 
 # Load environment variables
 load_dotenv()
