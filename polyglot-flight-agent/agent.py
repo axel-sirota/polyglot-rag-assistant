@@ -28,7 +28,7 @@ from typing import Dict, Optional
 from audio_utils import resample_audio, create_audio_frame_48khz, generate_test_tone, AudioFrameBuffer
 
 # Import language configuration
-from language_config import get_deepgram_config, log_language_configuration, get_language_name
+from language_config import get_deepgram_config, log_language_configuration, get_language_name, get_greeting, get_welcome_back_message
 
 # Load environment variables
 load_dotenv()
@@ -768,23 +768,9 @@ DATE HANDLING:
                     async def send_welcome_back():
                         await asyncio.sleep(1.5)  # Wait for audio to establish
                         
-                        welcome_messages = {
-                            "en": "Welcome back! I'm still here. How can I continue helping you with your flight search?",
-                            "es": "¡Bienvenido de nuevo! Sigo aquí. ¿Cómo puedo seguir ayudándote con tu búsqueda de vuelos?",
-                            "fr": "Bon retour! Je suis toujours là. Comment puis-je continuer à vous aider avec votre recherche de vol?",
-                            "de": "Willkommen zurück! Ich bin immer noch hier. Wie kann ich Ihnen weiterhin bei Ihrer Flugsuche helfen?",
-                            "it": "Bentornato! Sono ancora qui. Come posso continuare ad aiutarti con la ricerca del volo?",
-                            "pt": "Bem-vindo de volta! Ainda estou aqui. Como posso continuar ajudando com sua busca de voos?",
-                            "zh": "欢迎回来！我还在这里。我如何继续帮助您搜索航班？",
-                            "ja": "おかえりなさい！まだここにいます。フライト検索を続けるお手伝いをしましょうか？",
-                            "ko": "다시 오신 것을 환영합니다! 아직 여기 있습니다. 항공편 검색을 계속 도와드릴까요?",
-                            "ar": "مرحباً بعودتك! ما زلت هنا. كيف يمكنني الاستمرار في مساعدتك في البحث عن رحلتك؟",
-                            "hi": "वापस आने का स्वागत है! मैं अभी भी यहाँ हूँ। मैं आपकी उड़ान खोज में कैसे मदद कर सकता हूँ?",
-                            "ru": "С возвращением! Я все еще здесь. Как я могу продолжить помогать вам с поиском рейсов?",
-                        }
-                        
-                        message = welcome_messages.get(language, welcome_messages["en"])
-                        logger.info(f"🗣️ Sending welcome-back message: {message[:50]}...")
+                        # Get language-specific welcome back message from comprehensive language config
+                        message = get_welcome_back_message(language)
+                        logger.info(f"🗣️ Sending welcome-back message in {language}: {message[:50]}...")
                         session.say(message, allow_interruptions=True)
                         logger.info("✅ Welcome-back message sent to TTS")
                     
@@ -807,23 +793,9 @@ DATE HANDLING:
                     async def send_greeting():
                         await asyncio.sleep(1.5)
                         
-                        # Language-specific greetings
-                        greetings = {
-                            "en": "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
-                            "es": "¡Hola! Soy tu asistente multilingüe de búsqueda de vuelos. ¿Cómo puedo ayudarte a encontrar vuelos hoy?",
-                            "fr": "Bonjour! Je suis votre assistant multilingue de recherche de vols. Comment puis-je vous aider à trouver des vols aujourd'hui?",
-                            "de": "Hallo! Ich bin Ihr mehrsprachiger Flugsuche-Assistent. Wie kann ich Ihnen heute bei der Flugsuche helfen?",
-                            "it": "Ciao! Sono il tuo assistente multilingue per la ricerca di voli. Come posso aiutarti a trovare voli oggi?",
-                            "pt": "Olá! Sou seu assistente multilíngue de busca de voos. Como posso ajudá-lo a encontrar voos hoje?",
-                            "zh": "你好！我是您的多语言航班搜索助手。今天我如何帮助您寻找航班？",
-                            "ja": "こんにちは！私はあなたの多言語フライト検索アシスタントです。今日はどのようにフライトを探すお手伝いをしましょうか？",
-                            "ko": "안녕하세요! 저는 다국어 항공편 검색 도우미입니다. 오늘 항공편을 찾는 데 어떻게 도와드릴까요?",
-                            "ar": "مرحباً! أنا مساعدك متعدد اللغات للبحث عن الرحلات الجوية. كيف يمكنني مساعدتك في العثور على رحلات اليوم؟",
-                            "hi": "नमस्ते! मैं आपका बहुभाषी उड़ान खोज सहायक हूं। आज मैं आपको उड़ानें खोजने में कैसे मदद कर सकता हूं?",
-                            "ru": "Здравствуйте! Я ваш многоязычный помощник по поиску рейсов. Как я могу помочь вам найти рейсы сегодня?",
-                        }
-                        
-                        greeting_message = greetings.get(language, greetings["en"])
+                        # Get language-specific greeting from comprehensive language config
+                        greeting_message = get_greeting(language)
+                        logger.info(f"🗣️ Sending greeting in {language}: {greeting_message[:50]}...")
                         session.say(greeting_message, allow_interruptions=True)
                     
                     asyncio.create_task(send_greeting())
