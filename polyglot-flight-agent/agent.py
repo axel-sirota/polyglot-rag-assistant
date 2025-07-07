@@ -766,9 +766,13 @@ DATE HANDLING:
                         }
                         
                         message = welcome_messages.get(language, welcome_messages["en"])
+                        logger.info(f"🗣️ Sending welcome-back message: {message[:50]}...")
                         session.say(message, allow_interruptions=True)
+                        logger.info("✅ Welcome-back message sent to TTS")
                     
                     asyncio.create_task(send_welcome_back())
+                else:
+                    logger.info(f"⚠️ Participant {participant.identity} already in greeted_participants, skipping welcome-back")
             else:
                 # New participant
                 PARTICIPANT_SESSIONS[participant.identity] = {
@@ -804,6 +808,9 @@ DATE HANDLING:
         def on_participant_disconnected(participant: rtc.RemoteParticipant):
             """Handle disconnections but keep session data - SYNC callback"""
             logger.info(f"👤 Participant disconnected: {participant.identity}")
+            
+            # Remove from greeted_participants so they get welcomed back on reconnect
+            greeted_participants.discard(participant.identity)
             
             # Update last seen but DON'T delete the session
             if participant.identity in PARTICIPANT_SESSIONS:
