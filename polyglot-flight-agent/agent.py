@@ -207,10 +207,17 @@ async def search_flights(
 
 def prewarm(proc: JobProcess):
     """Preload models to prevent performance issues"""
-    logger.info("Prewarming models...")
+    logger.info("="*50)
+    logger.info("🔥 PREWARMING MODELS...")
+    logger.info(f"🔧 Process ID: {os.getpid()}")
+    logger.info("="*50)
     
     # Preload VAD with optimized settings
-    # NOTE: Silero VAD only supports 8kHz and 16kHz
+    logger.info("📊 Loading Silero VAD...")
+    logger.info("   - min_speech_duration: 0.05s")
+    logger.info("   - min_silence_duration: 0.55s")
+    logger.info("   NOTE: Silero VAD only supports 8kHz and 16kHz")
+    
     proc.userdata["vad"] = silero.VAD.load(
         min_speech_duration=0.05,
         min_silence_duration=0.55,
@@ -220,7 +227,11 @@ def prewarm(proc: JobProcess):
         force_cpu=True  # Prevents GPU contention
     )
     
-    logger.info("Models prewarmed successfully")
+    logger.info("✅ VAD loaded and cached in process userdata")
+    
+    logger.info("="*50)
+    logger.info("✅ PREWARM COMPLETE")
+    logger.info("="*50)
 
 
 class ResamplingAudioOutput(io.AudioOutput):
@@ -329,50 +340,84 @@ async def test_audio_tone(room: rtc.Room, duration: float = 1.0):
 
 async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent"""
-    logger.info(f"Agent started for room {ctx.room.name}")
+    logger.info("="*60)
+    logger.info(f"🚀 AGENT STARTING - Room: {ctx.room.name}")
+    logger.info(f"📋 Job ID: {ctx.job.id if hasattr(ctx.job, 'id') else 'N/A'}")
+    logger.info(f"🔧 Process ID: {os.getpid()}")
+    logger.info("="*60)
     
     try:
         # Connect to the room with AUDIO_ONLY to prevent video processing overhead
-        logger.info("Connecting to room with AUDIO_ONLY subscription...")
+        logger.info("🔌 Attempting to connect to LiveKit room...")
+        logger.info(f"📡 Connection mode: AUDIO_ONLY subscription")
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-        logger.info("Successfully connected to room")
+        logger.info("✅ Successfully connected to room!")
+        logger.info(f"👥 Participants in room: {len(ctx.room.remote_participants)}")
+        
+        # Log all participants
+        if ctx.room.remote_participants:
+            for p_id, participant in ctx.room.remote_participants.items():
+                logger.info(f"  - Participant: {participant.identity} (SID: {p_id})")
         
         # Get language preference from room metadata or participant metadata
+        logger.info("🌐 LANGUAGE DETECTION STARTING...")
         language = "en"  # Default to English
+        logger.info(f"📝 Default language: {language}")
+        
+        # Check room metadata
+        logger.info(f"🏠 Room metadata: '{ctx.room.metadata}'")
         if ctx.room.metadata:
             try:
                 room_metadata = json.loads(ctx.room.metadata)
-                language = room_metadata.get("language", "en")
-                logger.info(f"Language from room metadata: {language}")
-            except:
-                pass
+                logger.info(f"📊 Parsed room metadata: {room_metadata}")
+                room_language = room_metadata.get("language", "en")
+                if room_language != "en":
+                    language = room_language
+                    logger.info(f"🎯 Language from room metadata: {language}")
+            except Exception as e:
+                logger.error(f"❌ Failed to parse room metadata: {e}")
                 
         # Check for participants already in the room
+        logger.info(f"👥 Checking {len(ctx.room.remote_participants)} participants for language preference...")
         for participant in ctx.room.remote_participants.values():
+            logger.info(f"🔍 Checking participant: {participant.identity}")
+            logger.info(f"   - Metadata: '{participant.metadata}'")
+            logger.info(f"   - Metadata type: {type(participant.metadata)}")
+            
             if participant.metadata:
                 try:
                     participant_metadata = json.loads(participant.metadata)
+                    logger.info(f"   ✅ Parsed metadata: {participant_metadata}")
                     participant_language = participant_metadata.get("language")
                     if participant_language:
                         language = participant_language
-                        logger.info(f"Got language from participant {participant.identity}: {language}")
+                        logger.info(f"   🎯 Got language from participant: {language}")
                         break
                 except Exception as e:
-                    logger.error(f"Error parsing participant metadata: {e}")
+                    logger.error(f"   ❌ Error parsing participant metadata: {e}")
         
-        logger.info(f"Final language selection: {language}")
+        logger.info("="*40)
+        logger.info(f"🌍 FINAL LANGUAGE SELECTION: {language}")
+        logger.info("="*40)
         
         # Test tone option - DISABLED (was causing weird audio)
         # logger.info("🔊 Playing test tone to verify audio...")
         # await test_audio_tone(ctx.room, duration=1.0)
         
         # Get preloaded VAD from prewarm
+        logger.info("🎤 VOICE ACTIVITY DETECTION SETUP...")
         vad = ctx.proc.userdata.get("vad")
         if not vad:
-            logger.warning("VAD not preloaded, loading now...")
+            logger.warning("⚠️  VAD not preloaded, loading now...")
+            logger.info("📊 Loading Silero VAD with force_cpu=True")
             vad = silero.VAD.load(force_cpu=True)
+            logger.info("✅ VAD loaded successfully")
+        else:
+            logger.info("✅ Using preloaded VAD from prewarm")
         
         # Initialize agent with flight booking instructions
+        logger.info("🤖 INITIALIZING AGENT...")
+        logger.info(f"📝 Agent language setting: {language}")
         agent = Agent(
             instructions=f"""You are a multilingual flight booking assistant powered by LiveKit and Amadeus.
 
@@ -434,17 +479,24 @@ DATE HANDLING:
         )
         
         # Configure session with multiple provider options for robustness
-        logger.info("Initializing AgentSession with voice providers...")
+        logger.info("="*50)
+        logger.info("🎙️ CONFIGURING VOICE PIPELINE...")
+        logger.info("="*50)
         
         # Now using LiveKit Agents 1.0.23 which has working audio publishing
         # Both OpenAI Realtime and STT-LLM-TTS pipeline should work
         # Set use_realtime = True to test OpenAI Realtime
         use_realtime = False  # STT-LLM-TTS is more reliable
+        logger.info(f"📊 Pipeline selection: {'OpenAI Realtime' if use_realtime else 'STT-LLM-TTS'}")
         
         if use_realtime:
             # Testing OpenAI Realtime with LiveKit 1.0.23
             # This should work according to community reports
+            logger.info("🔧 Attempting to configure OpenAI Realtime...")
             try:
+                logger.info("   - Model: gpt-4o-realtime-preview-2024-12-17")
+                logger.info("   - Voice: alloy")
+                logger.info("   - Temperature: 0.8")
                 session = AgentSession(
                     llm=openai.realtime.RealtimeModel(
                         voice="alloy",
@@ -454,9 +506,9 @@ DATE HANDLING:
                     ),
                     vad=vad,
                 )
-                logger.info("🎤 Using OpenAI Realtime with LiveKit 1.0.23")
+                logger.info("✅ OpenAI Realtime configured successfully")
             except Exception as e:
-                logger.warning(f"OpenAI Realtime failed: {e}")
+                logger.error(f"❌ OpenAI Realtime failed: {e}")
                 use_realtime = False
         
         if not use_realtime:
@@ -475,7 +527,20 @@ DATE HANDLING:
                 "ko": "ko",  # Korean
             }
             deepgram_language = language_mapping.get(language, "en-US")
-            logger.info(f"Using Deepgram language code: {deepgram_language}")
+            logger.info(f"🔤 Language mapping: '{language}' -> '{deepgram_language}'")
+            
+            logger.info("🔧 Configuring STT-LLM-TTS components:")
+            logger.info("📊 STT (Deepgram):")
+            logger.info(f"   - Model: nova-3")
+            logger.info(f"   - Language: {deepgram_language}")
+            logger.info(f"   - Sample rate: 48000 Hz")
+            
+            logger.info("🧠 LLM (OpenAI):")
+            logger.info(f"   - Model: gpt-4o")
+            logger.info(f"   - Temperature: 0.7")
+            
+            logger.info("🔊 TTS (Cartesia):")
+            logger.info(f"   - Using default voice settings")
             
             session = AgentSession(
                 vad=vad,
@@ -491,48 +556,56 @@ DATE HANDLING:
                 tts=cartesia.TTS(),  # Use default voice
                 turn_detection="vad"
             )
-            logger.info("✅ STT-LLM-TTS pipeline configured with Deepgram STT + GPT-4 + Cartesia TTS")
+            logger.info("✅ STT-LLM-TTS pipeline configured successfully!")
         
         # Create and configure custom audio output with resampling
+        logger.info("="*50)
+        logger.info("🔊 AUDIO OUTPUT CONFIGURATION...")
+        logger.info("="*50)
+        logger.info("🎵 Creating ResamplingAudioOutput for 48kHz WebRTC compatibility")
         custom_audio_output = ResamplingAudioOutput(ctx.room)
         await custom_audio_output.start()
+        logger.info("✅ Audio output started")
         
         # Override the session's audio output
+        logger.info("🔧 Overriding session audio output with resampler")
         session.output._audio = custom_audio_output
         logger.info("✅ Custom audio output with 48kHz resampling configured")
         
         # Add event handlers for debugging with proper error handling
+        logger.info("📋 REGISTERING EVENT HANDLERS...")
+        
         @session.on("user_state_changed")
         def on_user_state_changed(event):
             try:
                 # UserStateChangedEvent has old_state and new_state properties
-                logger.info(f"👤 User state changed: {event.old_state} -> {event.new_state}")
+                logger.info(f"👤 USER STATE CHANGED: {event.old_state} -> {event.new_state}")
             except AttributeError as e:
-                logger.error(f"User state event error: {e}")
-                logger.info(f"👤 User state event: {event}")
+                logger.error(f"❌ User state event error: {e}")
+                logger.info(f"👤 Raw user state event: {event}")
         
         @session.on("agent_state_changed")
         def on_agent_state_changed(event):
             try:
                 # AgentStateChangedEvent has old_state and new_state properties
-                logger.info(f"🤖 Agent state changed: {event.old_state} -> {event.new_state}")
+                logger.info(f"🤖 AGENT STATE CHANGED: {event.old_state} -> {event.new_state}")
             except AttributeError as e:
-                logger.error(f"Agent state event error: {e}")
-                logger.info(f"🤖 Agent state event: {event}")
+                logger.error(f"❌ Agent state event error: {e}")
+                logger.info(f"🤖 Raw agent state event: {event}")
         
         @session.on("function_call")
         def on_function_call(event):
             try:
                 # FunctionCallEvent has function_call_id and function_name
-                logger.info(f"🔧 Function called: {event.function_name} (ID: {event.function_call_id})")
+                logger.info(f"🔧 FUNCTION CALLED: {event.function_name} (ID: {event.function_call_id})")
             except AttributeError as e:
-                logger.error(f"Function call event error: {e}")
-                logger.info(f"🔧 Function call event: {event}")
+                logger.error(f"❌ Function call event error: {e}")
+                logger.info(f"🔧 Raw function call event: {event}")
         
         # Add handler for transcription events
         @session.on("input_speech_transcription_completed")
         def on_speech_transcribed(event):
-            logger.info(f"💬 User said: {getattr(event, 'text', 'unknown')}")
+            logger.info(f"💬 USER SAID: '{getattr(event, 'text', 'unknown')}'")
             # Send to data channel for chat UI
             try:
                 data = json.dumps({
@@ -592,16 +665,18 @@ DATE HANDLING:
         # Handle participant metadata updates
         @ctx.room.on("participant_metadata_changed")
         def on_participant_metadata_changed(participant: rtc.Participant, prev_metadata: str):
+            logger.info(f"📝 METADATA CHANGED for {participant.identity}")
+            logger.info(f"   - Previous: '{prev_metadata}'")
+            logger.info(f"   - Current: '{participant.metadata}'")
             if participant.metadata:
                 try:
                     metadata = json.loads(participant.metadata)
                     new_language = metadata.get("language")
                     if new_language and new_language != language:
-                        logger.info(f"Language preference updated to: {new_language}")
-                        # Note: Cannot update STT language after initialization
-                        # User should reconnect with new language preference
+                        logger.info(f"🌐 Language preference updated to: {new_language}")
+                        logger.warning("⚠️  Cannot update STT language after initialization - user should reconnect")
                 except Exception as e:
-                    logger.error(f"Error parsing participant metadata: {e}")
+                    logger.error(f"❌ Error parsing participant metadata: {e}")
         
         # Handle audio track subscription (must be sync callback)
         @ctx.room.on("track_subscribed")
@@ -610,49 +685,77 @@ DATE HANDLING:
             publication: rtc.TrackPublication, 
             participant: rtc.RemoteParticipant
         ):
+            logger.info(f"📡 TRACK SUBSCRIBED: {track.kind} from {participant.identity}")
             if track.kind == rtc.TrackKind.KIND_AUDIO:
-                logger.info(f"🎤 Audio track subscribed from {participant.identity}")
+                logger.info(f"🎤 Audio track detected - checking participant metadata...")
                 # Check if participant has language preference
                 if participant.metadata:
                     try:
                         metadata = json.loads(participant.metadata)
                         participant_lang = metadata.get("language", "en")
-                        logger.info(f"Participant {participant.identity} language: {participant_lang}")
-                    except:
-                        pass
+                        logger.info(f"   - Participant language preference: {participant_lang}")
+                    except Exception as e:
+                        logger.error(f"   ❌ Error parsing metadata: {e}")
+                else:
+                    logger.info(f"   - No metadata found for participant")
         
         # Start the session with the room
-        logger.info("Starting agent session...")
+        logger.info("="*50)
+        logger.info("🚀 STARTING AGENT SESSION...")
+        logger.info("="*50)
         await session.start(agent=agent, room=ctx.room)
         
         # The agent will now handle participants joining
-        logger.info(f"✅ Agent session started successfully for room {ctx.room.name}")
+        logger.info(f"✅ Agent session started successfully!")
+        logger.info(f"🏠 Room: {ctx.room.name}")
+        logger.info(f"🌍 Language: {language}")
         
         # Initialize conversation with a greeting
-        # With STT-LLM-TTS pipeline, we can use session.say() for the initial greeting
-        logger.info("Sending initial greeting...")
+        logger.info("="*50)
+        logger.info("👋 SENDING INITIAL GREETING...")
+        logger.info("="*50)
+        
+        # Language-specific greetings
+        greetings = {
+            "en": "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
+            "es": "¡Hola! Soy tu asistente multilingüe de búsqueda de vuelos. ¿Cómo puedo ayudarte a encontrar vuelos hoy?",
+            "fr": "Bonjour! Je suis votre assistant multilingue de recherche de vols. Comment puis-je vous aider à trouver des vols aujourd'hui?",
+            "de": "Hallo! Ich bin Ihr mehrsprachiger Flugsuche-Assistent. Wie kann ich Ihnen heute bei der Flugsuche helfen?",
+            "it": "Ciao! Sono il tuo assistente multilingue per la ricerca di voli. Come posso aiutarti a trovare voli oggi?",
+            "pt": "Olá! Sou seu assistente multilíngue de busca de voos. Como posso ajudá-lo a encontrar voos hoje?",
+        }
+        
+        greeting_message = greetings.get(language, greetings["en"])
+        logger.info(f"📝 Greeting language: {language}")
+        logger.info(f"💬 Greeting message: {greeting_message}")
+        
         try:
             if use_realtime:
-                # For Realtime, use generate_reply
+                logger.info("🎯 Using OpenAI Realtime for greeting")
                 speech_handle = session.generate_reply(
-                    instructions="Greet the user warmly in a brief, natural way and ask how you can help them find flights today.",
+                    instructions=f"Say exactly this greeting: {greeting_message}",
                     allow_interruptions=True
                 )
-                logger.info(f"Speech handle created: {speech_handle}")
             else:
-                # For STT-LLM-TTS, we can use say() which works properly
+                logger.info("🎯 Using session.say() for greeting")
                 speech_handle = session.say(
-                    "Hello! I'm your multilingual flight search assistant. How can I help you find flights today?",
+                    greeting_message,
                     allow_interruptions=True
                 )
-                logger.info(f"Speech handle created: {speech_handle}")
-            logger.info("✅ Initial greeting sent")
+            logger.info(f"✅ Greeting initiated - speech handle: {speech_handle}")
         except Exception as e:
-            logger.error(f"Failed to send greeting: {e}")
+            logger.error(f"❌ Failed to send greeting: {e}")
+            logger.error(f"   Error type: {type(e).__name__}")
+            logger.error(f"   Error details: {str(e)}")
             # Continue anyway - the agent will still respond to user input
         
     except Exception as e:
-        logger.error(f"❌ Error in entrypoint: {e}", exc_info=True)
+        logger.error("="*60)
+        logger.error(f"❌ CRITICAL ERROR IN AGENT ENTRYPOINT")
+        logger.error(f"   Error type: {type(e).__name__}")
+        logger.error(f"   Error message: {str(e)}")
+        logger.error("="*60)
+        logger.error(f"Full traceback:", exc_info=True)
         raise
 
 
