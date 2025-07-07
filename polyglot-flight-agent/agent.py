@@ -403,6 +403,11 @@ async def entrypoint(ctx: JobContext):
         deepgram_language = language_mapping.get(language, language)
         logger.info(f"Deepgram language code: {deepgram_language}")
         
+        # Debug Spanish specifically
+        if language == "es":
+            logger.info("🇪🇸 Spanish language detected - using Deepgram Spanish model")
+            logger.info(f"Deepgram will use language code: {deepgram_language}")
+        
         # Test tone option - DISABLED (was causing weird audio)
         # logger.info("🔊 Playing test tone to verify audio...")
         # await test_audio_tone(ctx.room, duration=1.0)
@@ -702,6 +707,8 @@ if __name__ == "__main__":
             host="0.0.0.0",
             ws_url=os.getenv("LIVEKIT_URL", "wss://polyglot-rag-assistant-3l6xagej.livekit.cloud"),
             api_key=os.getenv("LIVEKIT_API_KEY"),
-            api_secret=os.getenv("LIVEKIT_API_SECRET")
+            api_secret=os.getenv("LIVEKIT_API_SECRET"),
+            num_idle_processes=1,  # Only 1 process to prevent multiple agents in same room
+            shutdown_process_after_idle_timeout=10.0  # Cleanup idle processes faster
         )
     )
