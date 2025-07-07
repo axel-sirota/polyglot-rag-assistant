@@ -1382,7 +1382,13 @@
                 case 'transcription':
                         if (parsedData.speaker === 'user') {
                             chatUI.addMessage(parsedData.text, 'user');
-                        } else if (parsedData.speaker === 'assistant') {
+                        } else if (parsedData.speaker === 'assistant' || parsedData.speaker === 'agent') {
+                            chatUI.addMessage(parsedData.text, 'assistant');
+                        } else if (parsedData.speaker === 'system') {
+                            chatUI.addMessage(parsedData.text, 'system');
+                        } else {
+                            // Default to assistant for unknown speakers
+                            console.log('Unknown speaker:', parsedData.speaker, '- defaulting to assistant');
                             chatUI.addMessage(parsedData.text, 'assistant');
                         }
                         break;
@@ -1503,6 +1509,33 @@
 
         // Initialize on load
         document.addEventListener('DOMContentLoaded', initializeLiveKit);
+        
+        // Override handleDataReceived temporarily for debugging
+        window.debugDataReceived = async function(payload, participant, kind) {
+            console.log('🔍 DEBUG: Data received!', {
+                payload: payload,
+                participant: participant?.identity,
+                kind: kind,
+                payloadType: typeof payload
+            });
+            
+            try {
+                const data = new TextDecoder().decode(payload);
+                console.log('🔍 DEBUG: Decoded string:', data);
+                
+                const parsed = JSON.parse(data);
+                console.log('🔍 DEBUG: Parsed JSON:', parsed);
+                
+                // Force add message regardless of type
+                if (parsed.text) {
+                    const sender = parsed.speaker === 'user' ? 'user' : 'assistant';
+                    console.log('🔍 DEBUG: Adding message as', sender, ':', parsed.text);
+                    chatUI.addMessage(parsed.text, sender);
+                }
+            } catch (e) {
+                console.error('🔍 DEBUG: Error in data handler:', e);
+            }
+        };
 
         // Handle participant events
         function handleParticipantConnected(participant) {

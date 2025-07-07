@@ -744,6 +744,19 @@ DATE HANDLING:
         logger.info(f"🏠 Room: {ctx.room.name}")
         logger.info(f"🌍 Language: {language}")
         
+        # TEST: Send a test message immediately after session start
+        logger.info("📨 Sending test data message...")
+        try:
+            test_data = json.dumps({
+                "type": "transcription",
+                "speaker": "system",
+                "text": "Agent connected and ready to chat!"
+            }).encode('utf-8')
+            await ctx.room.local_participant.publish_data(test_data, reliable=True)
+            logger.info("✅ Test data message sent successfully!")
+        except Exception as e:
+            logger.error(f"❌ Failed to send test data: {e}")
+        
         # ADD THESE NEW EVENT HANDLERS for persistence (MUST BE SYNC!)
         # Now that session exists, handlers can access it via closure
         @ctx.room.on("participant_connected")
