@@ -2,352 +2,740 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Polyglot Flight Assistant - Voice & Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Polyglot RAG Voice Flight Assistant</title>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
     <style>
+        /* CSS Variables for Theming */
         :root {
-            --primary-color: #007bff;
-            --success-color: #28a745;
-            --danger-color: #dc3545;
-            --warning-color: #ffc107;
-            --dark-bg: #1a1a1a;
-            --light-bg: #f8f9fa;
-            --text-color: #333;
-            --border-color: #dee2e6;
+            --primary-blue: #007bff;
+            --primary-blue-dark: #0056b3;
+            --sent-bg: #007bff;
+            --sent-text: #ffffff;
+            --received-bg: #f8f9fa;
+            --received-text: #212529;
+            --received-border: #e9ecef;
+            --system-bg: #fff3cd;
+            --system-text: #856404;
+            --meta-text: #6c757d;
+            --chat-bg: #f5f5f5;
+            --header-gradient-start: #007bff;
+            --header-gradient-end: #0056b3;
+            --mobile-header-height: 60px;
+            --mobile-bottom-controls-height: 80px;
         }
-        
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: var(--light-bg);
-            color: var(--text-color);
+            background-color: #f0f2f5;
             height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Main Container */
+        .voice-chat-container {
             display: flex;
             flex-direction: column;
-        }
-        
-        .header {
+            height: 100vh;
+            max-width: 800px;
+            margin: 0 auto;
             background: white;
-            border-bottom: 1px solid var(--border-color);
-            padding: 15px 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            position: relative;
         }
-        
-        .header h1 {
-            color: var(--primary-color);
-            font-size: 1.5rem;
-            margin: 0;
+
+        /* Header */
+        .chat-header {
+            background: linear-gradient(135deg, var(--header-gradient-start), var(--header-gradient-end));
+            color: white;
+            padding: 16px 20px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            flex-shrink: 0;
+            position: relative;
+            z-index: 100;
         }
-        
-        .main-container {
-            flex: 1;
+
+        .header-left {
             display: flex;
-            overflow: hidden;
+            align-items: center;
+            gap: 12px;
         }
-        
-        .sidebar {
-            width: 300px;
-            background: white;
-            border-right: 1px solid var(--border-color);
-            padding: 20px;
-            overflow-y: auto;
-        }
-        
-        .chat-container {
-            flex: 1;
+
+        .assistant-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
             display: flex;
-            flex-direction: column;
-            background: white;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
         }
-        
-        .status {
-            background: var(--light-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 5px;
-            padding: 10px;
-            margin-bottom: 15px;
-            text-align: center;
-            font-weight: 500;
-            transition: all 0.3s ease;
+
+        .assistant-info h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 2px;
         }
-        
-        .status.connected {
-            background: #d4edda;
-            border-color: #c3e6cb;
-            color: #155724;
-        }
-        
-        .status.connecting {
-            background: #fff3cd;
-            border-color: #ffeeba;
-            color: #856404;
-        }
-        
-        .status.disconnected {
-            background: #f8d7da;
-            border-color: #f5c6cb;
-            color: #721c24;
-        }
-        
-        .controls {
+
+        .assistant-status {
+            font-size: 12px;
+            opacity: 0.9;
             display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-bottom: 20px;
+            align-items: center;
+            gap: 4px;
         }
-        
-        button {
-            background: var(--primary-color);
-            color: white;
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #4CAF50;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Voice Controls */
+        .voice-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.2);
             border: none;
-            padding: 10px 16px;
-            border-radius: 5px;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            font-size: 16px;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .control-btn.active {
+            background: rgba(255, 76, 76, 0.8);
+        }
+
+        /* Language Selector in Header */
+        .language-selector-header {
+            margin: 0 12px;
+        }
+
+        .language-selector-header select {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
             font-size: 14px;
             cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 500;
+            outline: none;
+        }
+
+        .language-selector-header select option {
+            background: var(--primary-blue);
+            color: white;
+        }
+
+        /* Mobile Bottom Controls */
+        .mobile-controls {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 1px solid var(--received-border);
+            padding: 12px;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+        }
+
+        .mobile-controls-inner {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .mobile-connect-btn {
+            flex: 1;
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-        }
-        
-        button:hover:not(:disabled) {
-            background: #0056b3;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-        
-        button:disabled {
-            background: #6c757d;
-            cursor: not-allowed;
-            opacity: 0.65;
-        }
-        
-        button.danger {
-            background: var(--danger-color);
-        }
-        
-        button.danger:hover:not(:disabled) {
-            background: #c82333;
-        }
-        
-        .audio-level {
-            height: 20px;
-            background: var(--light-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 5px;
-            margin-bottom: 15px;
-            overflow: hidden;
-            position: relative;
-        }
-        
-        .audio-level-bar {
-            height: 100%;
-            background: var(--success-color);
-            width: 0%;
-            transition: width 0.1s ease;
-            position: absolute;
-            left: 0;
-            top: 0;
-        }
-        
-        .messages {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-            background: var(--light-bg);
-        }
-        
-        .message {
-            margin-bottom: 15px;
-            animation: fadeIn 0.3s ease;
-        }
-        
-        .message-header {
-            font-weight: bold;
-            margin-bottom: 5px;
-            font-size: 0.9em;
-            color: #666;
-        }
-        
-        .message.user .message-header {
-            color: var(--primary-color);
-        }
-        
-        .message.assistant .message-header {
-            color: var(--success-color);
-        }
-        
-        .message-content {
-            background: white;
-            padding: 12px 16px;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            line-height: 1.5;
-        }
-        
-        .message.user .message-content {
-            margin-left: 20px;
-            border-left: 3px solid var(--primary-color);
-        }
-        
-        .message.assistant .message-content {
-            margin-right: 20px;
-            border-left: 3px solid var(--success-color);
-        }
-        
-        .message.system .message-content {
-            background: #fff3cd;
-            border-left: 3px solid var(--warning-color);
-            font-style: italic;
-            text-align: center;
-        }
-        
-        .flight-results {
-            background: #e3f2fd;
-            border: 1px solid #90caf9;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 10px;
-        }
-        
-        .flight-results h4 {
-            color: var(--primary-color);
-            margin-bottom: 10px;
-        }
-        
-        .flight-option {
-            background: white;
-            padding: 10px;
-            margin-bottom: 8px;
-            border-radius: 5px;
-            border: 1px solid #e0e0e0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .flight-airline {
-            font-weight: 500;
-        }
-        
-        .flight-price {
-            color: var(--success-color);
-            font-weight: bold;
-        }
-        
-        .flight-time {
-            color: #666;
-            font-size: 0.9em;
-        }
-        
-        .info-box {
-            background: #e3f2fd;
-            border: 1px solid #90caf9;
-            border-radius: 5px;
-            padding: 12px;
-            margin-bottom: 15px;
-            font-size: 0.9em;
-        }
-        
-        .languages {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 5px;
-            margin-top: 10px;
-            font-size: 0.85em;
-        }
-        
-        .language-tag {
-            background: #e8eaf6;
-            padding: 4px 8px;
-            border-radius: 3px;
-            text-align: center;
-            color: #5c6bc0;
-        }
-        
-        .language-selector {
-            margin-bottom: 20px;
-        }
-        
-        .language-selector label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #555;
-        }
-        
-        .language-selector select {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid var(--border-color);
-            border-radius: 5px;
-            font-size: 14px;
-            background: white;
             cursor: pointer;
+            transition: all 0.2s ease;
         }
-        
-        .language-selector select:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 2px rgba(0,123,255,0.1);
+
+        .mobile-connect-btn:hover {
+            background: var(--primary-blue-dark);
         }
-        
-        @keyframes fadeIn {
+
+        .mobile-connect-btn.connected {
+            background: #dc3545;
+        }
+
+        /* Chat Messages Container */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            background: var(--chat-bg);
+            padding: 20px;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+            position: relative;
+            padding-bottom: 100px; /* Space for mobile controls */
+        }
+
+        /* Message Wrapper */
+        .message-wrapper {
+            display: flex;
+            margin-bottom: 16px;
+            animation: fadeInUp 0.3s ease-out;
+            align-items: flex-end;
+            gap: 8px;
+        }
+
+        @keyframes fadeInUp {
             from {
                 opacity: 0;
-                transform: translateY(10px);
+                transform: translateY(20px);
             }
             to {
                 opacity: 1;
                 transform: translateY(0);
             }
         }
-        
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(0,0,0,.1);
+
+        /* Message Grouping */
+        .message-wrapper.grouped {
+            margin-bottom: 4px;
+        }
+
+        .message-wrapper.grouped .avatar {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        /* User Messages (Right) */
+        .message-wrapper.sent {
+            flex-direction: row-reverse;
+            justify-content: flex-start;
+        }
+
+        /* Assistant Messages (Left) */
+        .message-wrapper.received {
+            flex-direction: row;
+            justify-content: flex-start;
+        }
+
+        /* System Messages (Center) */
+        .message-wrapper.system {
+            justify-content: center;
+        }
+
+        /* Avatars */
+        .avatar {
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
-            border-top-color: var(--primary-color);
-            animation: spin 1s ease-in-out infinite;
+            flex-shrink: 0;
+            background: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: #666;
         }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+
+        .avatar.assistant {
+            background: var(--primary-blue);
+            color: white;
         }
-        
+
+        .avatar.user {
+            background: #6c757d;
+            color: white;
+        }
+
+        /* Chat Bubbles */
+        .chat-bubble {
+            position: relative;
+            max-width: 70%;
+            word-wrap: break-word;
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 15px;
+            line-height: 1.5;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Sent Message Bubble */
+        .message-wrapper.sent .chat-bubble {
+            background: var(--sent-bg);
+            color: var(--sent-text);
+            border-bottom-right-radius: 4px;
+        }
+
+        /* Received Message Bubble */
+        .message-wrapper.received .chat-bubble {
+            background: var(--received-bg);
+            color: var(--received-text);
+            border: 1px solid var(--received-border);
+            border-bottom-left-radius: 4px;
+        }
+
+        /* System Message Bubble */
+        .message-wrapper.system .chat-bubble {
+            background: var(--system-bg);
+            color: var(--system-text);
+            border-radius: 12px;
+            font-size: 13px;
+            padding: 8px 12px;
+            max-width: 80%;
+        }
+
+        /* Flight Results Card */
+        .flight-results-container {
+            margin-top: 8px;
+        }
+
+        .flight-option {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .flight-option:hover {
+            background: #f8f9fa;
+            border-color: var(--primary-blue);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 123, 255, 0.15);
+        }
+
+        .flight-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .option-number {
+            background: var(--primary-blue);
+            color: white;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .airline-info {
+            flex: 1;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .flight-price {
+            font-size: 20px;
+            font-weight: bold;
+            color: var(--primary-blue);
+        }
+
+        .flight-details {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 40px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .flight-times {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .flight-arrow {
+            color: var(--primary-blue);
+        }
+
+        .flight-meta {
+            display: flex;
+            gap: 12px;
+            margin-top: 4px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        /* Timestamp */
+        .message-time {
+            font-size: 11px;
+            color: var(--meta-text);
+            margin-top: 4px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .message-wrapper:hover .message-time {
+            opacity: 1;
+        }
+
+        .message-wrapper.sent .message-time {
+            text-align: right;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* Typing Indicator */
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: var(--received-bg);
+            border-radius: 18px;
+            border-bottom-left-radius: 4px;
+            margin-left: 40px;
+            width: fit-content;
+        }
+
+        .typing-text {
+            margin-right: 8px;
+            color: var(--meta-text);
+            font-size: 14px;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 3px;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--meta-text);
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(1) { animation-delay: 0s; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.5;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+
+        /* Search Animation Overlay */
+        .search-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            display: none;
+            z-index: 10;
+        }
+
+        .search-overlay.active {
+            display: block;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, -45%); }
+            to { opacity: 1; transform: translate(-50%, -50%); }
+        }
+
+        .plane-animation {
+            font-size: 40px;
+            animation: fly 2s linear infinite;
+            margin-bottom: 10px;
+        }
+
+        @keyframes fly {
+            0% { transform: translateX(-20px) rotate(-5deg); }
+            50% { transform: translateX(20px) rotate(5deg); }
+            100% { transform: translateX(-20px) rotate(-5deg); }
+        }
+
+        .search-text {
+            color: #333;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        /* New Message Indicator */
+        .new-message-indicator {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--primary-blue);
+            color: white;
+            padding: 10px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 5;
+        }
+
+        .new-message-indicator.visible {
+            opacity: 1;
+            visibility: visible;
+            animation: bounce 0.5s ease;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0) translateX(-50%); }
+            40% { transform: translateY(-10px) translateX(-50%); }
+            60% { transform: translateY(-5px) translateX(-50%); }
+        }
+
+        .new-message-indicator:hover {
+            background: var(--primary-blue-dark);
+            transform: translateY(-2px) translateX(-50%);
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
+        }
+
+        /* Voice Input Indicator */
+        .voice-input-indicator {
+            background: rgba(0, 123, 255, 0.1);
+            border: 2px solid var(--primary-blue);
+            border-radius: 12px;
+            padding: 12px;
+            margin: 0 20px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            animation: voicePulse 2s infinite;
+        }
+
+        @keyframes voicePulse {
+            0% { border-color: var(--primary-blue); background: rgba(0, 123, 255, 0.1); }
+            50% { border-color: var(--primary-blue-dark); background: rgba(0, 123, 255, 0.15); }
+            100% { border-color: var(--primary-blue); background: rgba(0, 123, 255, 0.1); }
+        }
+
+        .voice-wave {
+            width: 3px;
+            background: var(--primary-blue);
+            border-radius: 3px;
+            animation: wave 1s infinite ease-in-out;
+        }
+
+        .voice-wave:nth-child(1) { height: 10px; animation-delay: 0s; }
+        .voice-wave:nth-child(2) { height: 20px; animation-delay: 0.1s; }
+        .voice-wave:nth-child(3) { height: 15px; animation-delay: 0.2s; }
+        .voice-wave:nth-child(4) { height: 25px; animation-delay: 0.3s; }
+        .voice-wave:nth-child(5) { height: 18px; animation-delay: 0.4s; }
+
+        @keyframes wave {
+            0%, 100% { transform: scaleY(0.5); }
+            50% { transform: scaleY(1); }
+        }
+
+        /* Mobile Responsive */
         @media (max-width: 768px) {
-            .sidebar {
+            .voice-chat-container {
+                max-width: 100%;
+                height: 100vh;
+                border-radius: 0;
+            }
+
+            .chat-header {
+                padding: 12px 16px;
+                height: var(--mobile-header-height);
+            }
+
+            .assistant-info h3 {
+                font-size: 16px;
+            }
+
+            .assistant-status {
                 display: none;
+            }
+
+            .chat-messages {
+                padding: 16px;
+                padding-bottom: var(--mobile-bottom-controls-height);
+            }
+
+            .chat-bubble {
+                max-width: 85%;
+                font-size: 14px;
+                padding: 10px 14px;
+            }
+
+            .flight-option {
+                padding: 10px;
+            }
+
+            .flight-price {
+                font-size: 18px;
+            }
+
+            .search-overlay {
+                width: 90%;
+                padding: 20px;
+            }
+
+            /* Show mobile controls */
+            .mobile-controls {
+                display: block;
+            }
+
+            .voice-controls {
+                display: none;
+            }
+
+            .new-message-indicator {
+                bottom: 100px;
+            }
+
+            .language-selector-header {
+                display: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .chat-bubble {
+                max-width: 90%;
+                font-size: 13px;
+                padding: 8px 12px;
+            }
+
+            .avatar {
+                width: 28px;
+                height: 28px;
+            }
+
+            .option-number {
+                width: 24px;
+                height: 24px;
+                font-size: 12px;
+            }
+
+            .assistant-info h3 {
+                font-size: 15px;
+            }
+
+            .flight-meta {
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+        }
+
+        /* Touch-friendly enhancements */
+        @media (pointer: coarse) {
+            .control-btn,
+            .flight-option,
+            .new-message-indicator,
+            .mobile-connect-btn {
+                min-height: 44px;
+            }
+
+            .flight-option {
+                padding: 14px;
+            }
+        }
+
+        /* Landscape mobile */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .chat-header {
+                padding: 8px 16px;
+                height: 50px;
+            }
+
+            .assistant-avatar {
+                width: 32px;
+                height: 32px;
+            }
+
+            .mobile-controls {
+                padding: 8px;
+            }
+
+            .chat-messages {
+                padding-bottom: 70px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🌍 Polyglot Flight Assistant <span style="font-size: 0.8em; color: #666;">Voice & Chat</span></h1>
-    </div>
-    
-    <div class="main-container">
-        <div class="sidebar">
-            <div id="status" class="status disconnected">
-                Disconnected
+    <div class="voice-chat-container">
+        <!-- Header -->
+        <div class="chat-header">
+            <div class="header-left">
+                <div class="assistant-avatar">✈️</div>
+                <div class="assistant-info">
+                    <h3>Flight Assistant</h3>
+                    <div class="assistant-status">
+                        <span class="status-dot"></span>
+                        <span>Ready to help</span>
+                    </div>
+                </div>
             </div>
             
-            <div class="language-selector">
-                <label for="languageSelect">Select Language:</label>
+            <!-- Language Selector (Desktop) -->
+            <div class="language-selector-header">
                 <select id="languageSelect" onchange="handleLanguageChange()">
                     <!-- English languages -->
                     <option value="en" selected>English</option>
@@ -397,81 +785,454 @@
                 </select>
             </div>
             
-            <div class="controls">
-                <button id="connectBtn" onclick="connect()">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
-                    </svg>
-                    Connect
+            <div class="voice-controls">
+                <button id="connectBtn" class="control-btn" title="Connect">
+                    <span id="connectIcon">🔗</span>
                 </button>
-                <button id="disconnectBtn" onclick="disconnect()" disabled class="danger">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                    Disconnect
+                <button id="micBtn" class="control-btn" title="Toggle Microphone">
+                    <span id="micIcon">🎤</span>
                 </button>
-            </div>
-            
-            <div class="audio-level">
-                <div id="audioLevel" class="audio-level-bar"></div>
-            </div>
-            
-            <div class="info-box">
-                <strong>🎤 Voice Enabled</strong>
-                <p>Speak naturally in 30+ languages!</p>
-                <div class="languages">
-                    <span class="language-tag">English</span>
-                    <span class="language-tag">Español</span>
-                    <span class="language-tag">Français</span>
-                    <span class="language-tag">中文</span>
-                    <span class="language-tag">Deutsch</span>
-                    <span class="language-tag">日本語</span>
-                    <span class="language-tag">العربية</span>
-                    <span class="language-tag">हिन्दी</span>
-                </div>
-                <p style="margin-top: 10px; font-size: 0.85em; color: #666;">+ 25 more languages supported</p>
-            </div>
-            
-            <div class="info-box">
-                <strong>💡 Tips</strong>
-                <p>• Say "Find flights from..."</p>
-                <p>• Speak dates naturally</p>
-                <p>• Ask for specific airlines</p>
-                <p>• Request morning/evening flights</p>
+                <button id="speakerBtn" class="control-btn" title="Toggle Speaker">
+                    <span id="speakerIcon">🔊</span>
+                </button>
             </div>
         </div>
-        
-        <div class="chat-container">
-            <div id="messages" class="messages">
-                <div class="message system">
-                    <div class="message-content">
-                        Welcome! Click "Connect" to start searching for flights by voice in any language.
-                    </div>
+
+        <!-- Chat Messages -->
+        <div class="chat-messages" id="chatMessages">
+            <!-- Welcome Message -->
+            <div class="message-wrapper system">
+                <div class="chat-bubble">
+                    Welcome! I'm your voice-first flight assistant. Just speak to search for flights.
                 </div>
             </div>
+        </div>
+
+        <!-- Search Overlay -->
+        <div class="search-overlay" id="searchOverlay">
+            <div class="plane-animation">✈️</div>
+            <div class="search-text">Searching for flights...</div>
+        </div>
+
+        <!-- New Message Indicator -->
+        <div class="new-message-indicator" id="newMessageIndicator">
+            New message ↓
+        </div>
+
+        <!-- Voice Input Indicator -->
+        <div class="voice-input-indicator" id="voiceIndicator" style="display: none;">
+            <div class="voice-wave"></div>
+            <div class="voice-wave"></div>
+            <div class="voice-wave"></div>
+            <div class="voice-wave"></div>
+            <div class="voice-wave"></div>
+            <span style="margin-left: 8px; color: var(--primary-blue);">Listening...</span>
+        </div>
+    </div>
+
+    <!-- Mobile Bottom Controls -->
+    <div class="mobile-controls" id="mobileControls">
+        <div class="mobile-controls-inner">
+            <select id="mobileLanguageSelect" onchange="handleMobileLanguageChange()" style="padding: 10px; border-radius: 20px; border: 1px solid #ddd;">
+                <!-- Same options as desktop language selector -->
+                <option value="en" selected>🇬🇧 EN</option>
+                <option value="es">🇪🇸 ES</option>
+                <option value="fr">🇫🇷 FR</option>
+                <option value="de">🇩🇪 DE</option>
+                <option value="it">🇮🇹 IT</option>
+                <option value="pt">🇵🇹 PT</option>
+                <option value="zh">🇨🇳 ZH</option>
+                <option value="ja">🇯🇵 JA</option>
+                <option value="ko">🇰🇷 KO</option>
+                <option value="ar">🇸🇦 AR</option>
+                <option value="hi">🇮🇳 HI</option>
+                <option value="multi">🌐</option>
+            </select>
+            <button id="mobileConnectBtn" class="mobile-connect-btn">
+                <span id="mobileConnectIcon">🔗</span>
+                <span id="mobileConnectText">Connect to Assistant</span>
+            </button>
+            <button id="mobileMicBtn" class="control-btn" style="display: none;">
+                <span id="mobileMicIcon">🎤</span>
+            </button>
+            <button id="mobileSpeakerBtn" class="control-btn" style="display: none;">
+                <span id="mobileSpeakerIcon">🔊</span>
+            </button>
         </div>
     </div>
 
     <script>
-        // LiveKit configuration
+        // Chat UI Manager
+        class ChatUIManager {
+            constructor() {
+                this.chatMessages = document.getElementById('chatMessages');
+                this.searchOverlay = document.getElementById('searchOverlay');
+                this.newMessageIndicator = document.getElementById('newMessageIndicator');
+                this.voiceIndicator = document.getElementById('voiceIndicator');
+                this.isNearBottom = true;
+                this.scrollThreshold = 100;
+                this.lastSender = null;
+                this.lastMessageTime = null;
+                this.groupingThreshold = 60000; // 1 minute for message grouping
+                this.isConnected = false;
+
+                this.initScrollListener();
+                this.initNewMessageIndicator();
+            }
+
+            initScrollListener() {
+                this.chatMessages.addEventListener('scroll', () => {
+                    this.checkScrollPosition();
+                });
+            }
+
+            initNewMessageIndicator() {
+                this.newMessageIndicator.addEventListener('click', () => {
+                    this.scrollToBottom(true);
+                    this.hideNewMessageIndicator();
+                });
+            }
+
+            checkScrollPosition() {
+                const { scrollTop, scrollHeight, clientHeight } = this.chatMessages;
+                this.isNearBottom = scrollTop + clientHeight >= scrollHeight - this.scrollThreshold;
+                
+                if (this.isNearBottom) {
+                    this.hideNewMessageIndicator();
+                }
+            }
+
+            shouldAutoScroll() {
+                return this.isNearBottom;
+            }
+
+            scrollToBottom(smooth = true) {
+                if (smooth) {
+                    this.chatMessages.scrollTo({
+                        top: this.chatMessages.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                } else {
+                    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+                }
+            }
+
+            showNewMessageIndicator() {
+                this.newMessageIndicator.classList.add('visible');
+            }
+
+            hideNewMessageIndicator() {
+                this.newMessageIndicator.classList.remove('visible');
+            }
+
+            addMessage(text, sender = 'assistant', data = null) {
+                const currentTime = Date.now();
+                const shouldGroup = this.lastSender === sender && 
+                                  this.lastMessageTime && 
+                                  (currentTime - this.lastMessageTime) < this.groupingThreshold;
+
+                const messageWrapper = document.createElement('div');
+                messageWrapper.className = `message-wrapper ${sender}`;
+                if (shouldGroup) {
+                    messageWrapper.classList.add('grouped');
+                }
+
+                // Create avatar
+                if (!shouldGroup && sender !== 'system') {
+                    const avatar = document.createElement('div');
+                    avatar.className = `avatar ${sender}`;
+                    avatar.textContent = sender === 'user' ? '👤' : '✈️';
+                    messageWrapper.appendChild(avatar);
+                }
+
+                // Create message content
+                const messageContent = document.createElement('div');
+                messageContent.className = 'message-content';
+
+                // Create chat bubble
+                const chatBubble = document.createElement('div');
+                chatBubble.className = 'chat-bubble';
+
+                // Handle flight data
+                if (data && data.type === 'flight_results') {
+                    chatBubble.innerHTML = text;
+                    const flightContainer = this.createFlightResults(data.flights);
+                    chatBubble.appendChild(flightContainer);
+                } else {
+                    chatBubble.textContent = text;
+                }
+
+                messageContent.appendChild(chatBubble);
+
+                // Add timestamp
+                const timestamp = document.createElement('div');
+                timestamp.className = 'message-time';
+                timestamp.textContent = new Date().toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+                messageContent.appendChild(timestamp);
+
+                messageWrapper.appendChild(messageContent);
+                this.chatMessages.appendChild(messageWrapper);
+
+                // Update last sender info
+                this.lastSender = sender;
+                this.lastMessageTime = currentTime;
+
+                // Handle scrolling
+                if (this.shouldAutoScroll()) {
+                    this.scrollToBottom();
+                } else if (sender !== 'user') {
+                    this.showNewMessageIndicator();
+                }
+            }
+
+            createFlightResults(flights) {
+                const container = document.createElement('div');
+                container.className = 'flight-results-container';
+
+                flights.forEach((flight, index) => {
+                    const flightOption = document.createElement('div');
+                    flightOption.className = 'flight-option';
+                    flightOption.onclick = () => this.selectFlight(index + 1);
+
+                    flightOption.innerHTML = `
+                        <div class="flight-header">
+                            <div class="option-number">${index + 1}</div>
+                            <div class="airline-info">${flight.airline} ${flight.flightNumber || ''}</div>
+                            <div class="flight-price">$${flight.price}</div>
+                        </div>
+                        <div class="flight-details">
+                            <span class="flight-times">
+                                ${flight.departure || flight.departure_time} <span class="flight-arrow">→</span> ${flight.arrival || flight.arrival_time || ''}
+                            </span>
+                        </div>
+                        <div class="flight-meta">
+                            <span>✈️ ${flight.duration || 'Direct'}</span>
+                            <span>• ${flight.stops || 'Nonstop'}</span>
+                            ${flight.aircraft ? `<span>• ${flight.aircraft}</span>` : ''}
+                        </div>
+                    `;
+
+                    container.appendChild(flightOption);
+                });
+
+                return container;
+            }
+
+            selectFlight(optionNumber) {
+                this.addMessage(`I'd like option ${optionNumber} please.`, 'user');
+                // This would trigger the voice agent to process the selection
+                if (window.liveKitRoom && window.liveKitRoom.localParticipant) {
+                    const data = {
+                        type: 'flight_selection',
+                        option: optionNumber
+                    };
+                    window.publishData(data);
+                }
+            }
+
+            showTypingIndicator() {
+                if (document.getElementById('typingIndicator')) return;
+
+                const typingWrapper = document.createElement('div');
+                typingWrapper.className = 'message-wrapper received';
+                typingWrapper.id = 'typingIndicator';
+
+                const avatar = document.createElement('div');
+                avatar.className = 'avatar assistant';
+                avatar.textContent = '✈️';
+                typingWrapper.appendChild(avatar);
+
+                const typingIndicator = document.createElement('div');
+                typingIndicator.className = 'typing-indicator';
+                typingIndicator.innerHTML = `
+                    <span class="typing-text">Assistant is thinking</span>
+                    <div class="typing-dots">
+                        <span class="typing-dot"></span>
+                        <span class="typing-dot"></span>
+                        <span class="typing-dot"></span>
+                    </div>
+                `;
+
+                typingWrapper.appendChild(typingIndicator);
+                this.chatMessages.appendChild(typingWrapper);
+
+                if (this.shouldAutoScroll()) {
+                    this.scrollToBottom();
+                }
+            }
+
+            hideTypingIndicator() {
+                const indicator = document.getElementById('typingIndicator');
+                if (indicator) {
+                    indicator.remove();
+                }
+            }
+
+            showSearchAnimation() {
+                this.searchOverlay.classList.add('active');
+                this.showTypingIndicator();
+            }
+
+            hideSearchAnimation() {
+                this.searchOverlay.classList.remove('active');
+                this.hideTypingIndicator();
+            }
+
+            showVoiceIndicator() {
+                this.voiceIndicator.style.display = 'flex';
+            }
+
+            hideVoiceIndicator() {
+                this.voiceIndicator.style.display = 'none';
+            }
+
+            updateConnectionStatus(connected) {
+                this.isConnected = connected;
+                const statusEl = document.querySelector('.assistant-status span:last-child');
+                const statusDot = document.querySelector('.status-dot');
+                
+                // Update desktop controls
+                const connectBtn = document.getElementById('connectBtn');
+                if (connected) {
+                    // Show disconnect button instead of hiding
+                    connectBtn.style.display = 'flex';
+                    connectBtn.classList.add('active');
+                    document.getElementById('connectIcon').textContent = '🔌';
+                    connectBtn.title = 'Disconnect';
+                } else {
+                    connectBtn.style.display = 'flex';
+                    connectBtn.classList.remove('active');
+                    document.getElementById('connectIcon').textContent = '🔗';
+                    connectBtn.title = 'Connect';
+                }
+                document.getElementById('micBtn').style.display = connected ? 'flex' : 'none';
+                document.getElementById('speakerBtn').style.display = connected ? 'flex' : 'none';
+                
+                // Update mobile controls
+                const mobileConnectBtn = document.getElementById('mobileConnectBtn');
+                const mobileMicBtn = document.getElementById('mobileMicBtn');
+                const mobileSpeakerBtn = document.getElementById('mobileSpeakerBtn');
+                
+                if (connected) {
+                    mobileConnectBtn.classList.add('connected');
+                    document.getElementById('mobileConnectIcon').textContent = '🔌';
+                    document.getElementById('mobileConnectText').textContent = 'Disconnect';
+                    mobileMicBtn.style.display = 'flex';
+                    mobileSpeakerBtn.style.display = 'flex';
+                    if (statusEl) statusEl.textContent = 'Connected';
+                    if (statusDot) statusDot.style.background = '#4CAF50';
+                } else {
+                    mobileConnectBtn.classList.remove('connected');
+                    document.getElementById('mobileConnectIcon').textContent = '🔗';
+                    document.getElementById('mobileConnectText').textContent = 'Connect to Assistant';
+                    mobileMicBtn.style.display = 'none';
+                    mobileSpeakerBtn.style.display = 'none';
+                    if (statusEl) statusEl.textContent = 'Ready to help';
+                    if (statusDot) statusDot.style.background = '#ffc107';
+                }
+            }
+        }
+
+        // LiveKit Integration
         const LIVEKIT_URL = 'wss://polyglot-rag-assistant-3l6xagej.livekit.cloud';
-        
         let room;
-        let audioTrack;
-        let agentSpeaking = false;
-        let transcriptionBuffer = '';
-        
-        // UI elements
-        const statusEl = document.getElementById('status');
-        const connectBtn = document.getElementById('connectBtn');
-        const disconnectBtn = document.getElementById('disconnectBtn');
-        const messagesEl = document.getElementById('messages');
-        const audioLevelEl = document.getElementById('audioLevel');
-        
+        let chatUI;
+
+        async function initializeLiveKit() {
+            chatUI = new ChatUIManager();
+
+            // Initialize room
+            room = new LivekitClient.Room({
+                adaptiveStream: true,
+                dynacast: true,
+                videoCaptureDefaults: {
+                    resolution: LivekitClient.VideoPresets.h720.resolution,
+                }
+            });
+
+            // Store room reference globally for flight selection
+            window.liveKitRoom = room;
+
+            // Set up event listeners
+            room
+                .on(LivekitClient.RoomEvent.Connected, handleConnected)
+                .on(LivekitClient.RoomEvent.Disconnected, handleDisconnected)
+                .on(LivekitClient.RoomEvent.DataReceived, handleDataReceived)
+                .on(LivekitClient.RoomEvent.TrackSubscribed, handleTrackSubscribed)
+                .on(LivekitClient.RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed)
+                .on(LivekitClient.RoomEvent.ActiveSpeakersChanged, handleActiveSpeakers)
+                .on(LivekitClient.RoomEvent.TranscriptionReceived, handleTranscription)
+                .on(LivekitClient.RoomEvent.ParticipantConnected, handleParticipantConnected)
+                .on(LivekitClient.RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
+
+            // Set up control buttons
+            setupControls();
+
+            // Sync language selectors
+            syncLanguageSelectors();
+        }
+
+        function setupControls() {
+            const connectBtn = document.getElementById('connectBtn');
+            const micBtn = document.getElementById('micBtn');
+            const speakerBtn = document.getElementById('speakerBtn');
+            
+            // Mobile controls
+            const mobileConnectBtn = document.getElementById('mobileConnectBtn');
+            const mobileMicBtn = document.getElementById('mobileMicBtn');
+            const mobileSpeakerBtn = document.getElementById('mobileSpeakerBtn');
+
+            // Connect function for both desktop and mobile
+            const connectFunction = async () => {
+                if (room.state === LivekitClient.ConnectionState.Connected) {
+                    await disconnect();
+                } else {
+                    await connect();
+                }
+            };
+
+            // Mic toggle function
+            const micToggleFunction = async () => {
+                if (room.localParticipant) {
+                    const enabled = room.localParticipant.isMicrophoneEnabled;
+                    await room.localParticipant.setMicrophoneEnabled(!enabled);
+                    
+                    micBtn.classList.toggle('active', !enabled);
+                    mobileMicBtn.classList.toggle('active', !enabled);
+                    document.getElementById('micIcon').textContent = enabled ? '🎤' : '🔇';
+                    document.getElementById('mobileMicIcon').textContent = enabled ? '🎤' : '🔇';
+                }
+            };
+
+            // Speaker toggle function
+            const speakerToggleFunction = () => {
+                const enabled = room.canPlaybackAudio;
+                if (!enabled) {
+                    room.startAudio();
+                }
+                speakerBtn.classList.toggle('active', !enabled);
+                mobileSpeakerBtn.classList.toggle('active', !enabled);
+                document.getElementById('speakerIcon').textContent = enabled ? '🔊' : '🔈';
+                document.getElementById('mobileSpeakerIcon').textContent = enabled ? '🔊' : '🔈';
+            };
+
+            // Attach event listeners
+            connectBtn.onclick = connectFunction;
+            mobileConnectBtn.onclick = connectFunction;
+            
+            micBtn.onclick = micToggleFunction;
+            mobileMicBtn.onclick = micToggleFunction;
+            
+            speakerBtn.onclick = speakerToggleFunction;
+            mobileSpeakerBtn.onclick = speakerToggleFunction;
+        }
+
         async function connect() {
-            updateStatus('Connecting...', 'connecting');
-            connectBtn.disabled = true;
+            chatUI.updateConnectionStatus(false);
+            chatUI.addMessage('Connecting...', 'system');
             
             try {
                 // Get or create persistent participant identity
@@ -497,7 +1258,7 @@
                     },
                     body: JSON.stringify({
                         identity: participantIdentity,
-                        room: roomName,  // Use language-specific room
+                        room: roomName,
                         metadata: JSON.stringify({
                             language: selectedLanguage
                         })
@@ -510,100 +1271,80 @@
                 
                 const { token } = await response.json();
                 
-                // Create room and connect
-                room = new LivekitClient.Room({
-                    audioCaptureDefaults: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    },
-                    dynacast: true
-                });
-                
-                // Set up event handlers
-                room.on('participantConnected', handleParticipantConnected);
-                room.on('participantDisconnected', handleParticipantDisconnected);
-                room.on('dataReceived', handleDataReceived);
-                room.on('disconnected', handleDisconnected);
-                room.on('trackSubscribed', handleTrackSubscribed);
-                room.on('trackUnsubscribed', handleTrackUnsubscribed);
-                room.on('localTrackPublished', handleLocalTrackPublished);
-                room.on('trackStreamStateChanged', handleTrackStreamStateChanged);
-                room.on('activeSpeakersChanged', handleActiveSpeakersChanged);
-                
                 // Connect to room
                 await room.connect(LIVEKIT_URL, token);
                 
-                updateStatus(`Connected to LiveKit (${selectedLanguage})`, 'connected');
-                addMessage('system', `Connected to ${selectedLanguage} room! Waiting for AI assistant...`);
+                chatUI.addMessage(`Connected to ${selectedLanguage} room! Waiting for AI assistant...`, 'system');
                 
                 // Enable microphone
                 await room.localParticipant.setMicrophoneEnabled(true);
                 
-                connectBtn.disabled = true;
-                disconnectBtn.disabled = false;
-                
             } catch (error) {
                 console.error('Connection error:', error);
-                updateStatus(`Error: ${error.message}`, 'disconnected');
-                connectBtn.disabled = false;
-                addMessage('system', `Connection failed: ${error.message}`);
+                chatUI.addMessage(`Connection failed: ${error.message}`, 'system');
+                chatUI.updateConnectionStatus(false);
             }
         }
-        
+
         async function disconnect() {
             if (room) {
                 await room.disconnect();
             }
-            updateStatus('Disconnected', 'disconnected');
-            connectBtn.disabled = false;
-            disconnectBtn.disabled = true;
-            audioLevelEl.style.width = '0%';
         }
-        
-        function handleParticipantConnected(participant) {
-            console.log('Participant connected:', participant.identity);
-            if (participant.identity.includes('agent')) {
-                addMessage('system', '🤖 AI Assistant joined - You can start speaking!');
-            }
+
+        function handleConnected() {
+            chatUI.updateConnectionStatus(true);
         }
-        
-        function handleParticipantDisconnected(participant) {
-            console.log('Participant disconnected:', participant.identity);
-            if (participant.identity.includes('agent')) {
-                addMessage('system', '🤖 AI Assistant left the conversation');
-            }
-        }
-        
-        function handleDataReceived(data, participant) {
-            try {
-                const message = JSON.parse(new TextDecoder().decode(data));
-                console.log('Data received:', message);
-                
-                if (message.type === 'transcription') {
-                    // Transcriptions come from the agent, not from local participant
-                    if (message.speaker === 'user') {
-                        addMessage('user', message.text);
-                    } else if (message.speaker === 'assistant') {
-                        addMessage('assistant', message.text);
-                    }
-                } else if (message.type === 'flight_results') {
-                    // Handle flight results separately if needed
-                    addMessage('assistant', message.text, message.flights);
-                }
-            } catch (e) {
-                console.error('Error parsing data:', e);
-            }
-        }
-        
+
         function handleDisconnected() {
-            updateStatus('Disconnected', 'disconnected');
-            connectBtn.disabled = false;
-            disconnectBtn.disabled = true;
-            audioLevelEl.style.width = '0%';
-            addMessage('system', 'Disconnected from server');
+            chatUI.updateConnectionStatus(false);
+            chatUI.addMessage('Disconnected from assistant', 'system');
         }
-        
+
+        async function handleDataReceived(payload, participant, kind) {
+            const data = new TextDecoder().decode(payload);
+            
+            try {
+                const parsedData = JSON.parse(data);
+                console.log('Data received:', parsedData);
+                
+                switch (parsedData.type) {
+                    case 'transcript':
+                case 'transcription':
+                        if (parsedData.speaker === 'user') {
+                            chatUI.addMessage(parsedData.text, 'user');
+                        } else if (parsedData.speaker === 'assistant') {
+                            chatUI.addMessage(parsedData.text, 'assistant');
+                        }
+                        break;
+                        
+                    case 'thinking':
+                        chatUI.showTypingIndicator();
+                        break;
+                        
+                    case 'searching':
+                        chatUI.showSearchAnimation();
+                        break;
+                        
+                    case 'flight_results':
+                        chatUI.hideSearchAnimation();
+                        chatUI.addMessage(
+                            parsedData.text || `I found ${parsedData.flights.length} flights for you:`,
+                            'assistant',
+                            parsedData
+                        );
+                        break;
+                        
+                    case 'agent_response':
+                        chatUI.hideTypingIndicator();
+                        chatUI.addMessage(parsedData.text, 'assistant');
+                        break;
+                }
+            } catch (error) {
+                console.error('Error parsing data:', error);
+            }
+        }
+
         function handleTrackSubscribed(track, publication, participant) {
             console.log('Track subscribed:', track.kind, participant.identity);
             
@@ -617,123 +1358,65 @@
                 audioElement.style.display = 'none';
             }
         }
-        
+
         function handleTrackUnsubscribed(track, publication, participant) {
             console.log('Track unsubscribed:', track.kind, participant.identity);
             if (track.kind === 'audio') {
                 track.detach();
             }
         }
-        
-        function handleLocalTrackPublished(publication) {
-            console.log('Local track published:', publication.kind);
+
+        function handleActiveSpeakers(speakers) {
+            const isUserSpeaking = speakers.some(speaker => 
+                speaker.identity === room.localParticipant?.identity
+            );
             
-            if (publication.kind === 'audio') {
-                // Monitor audio levels
-                const track = publication.track;
-                if (track) {
-                    setInterval(() => {
-                        if (track.processor) {
-                            const level = track.processor.volume || 0;
-                            audioLevelEl.style.width = `${level * 100}%`;
-                        }
-                    }, 100);
-                }
+            if (isUserSpeaking) {
+                chatUI.showVoiceIndicator();
+            } else {
+                chatUI.hideVoiceIndicator();
             }
         }
-        
-        function handleTrackStreamStateChanged(publication, streamState) {
-            console.log('Track stream state changed:', publication.kind, streamState);
+
+        function handleTranscription(transcription, participant) {
+            // Handle real-time transcription if enabled
+            if (transcription.final) {
+                const sender = participant.identity === room.localParticipant?.identity ? 'user' : 'assistant';
+                chatUI.addMessage(transcription.text, sender);
+            }
         }
-        
-        function handleActiveSpeakersChanged(speakers) {
-            // Track who is speaking
-            speakers.forEach(participant => {
-                if (participant.identity.includes('agent')) {
-                    agentSpeaking = true;
-                } else if (participant === room.localParticipant) {
-                    // User is speaking
-                    if (transcriptionBuffer) {
-                        addMessage('user', transcriptionBuffer);
-                        transcriptionBuffer = '';
-                    }
-                }
+
+        // Global function for publishing data
+        window.publishData = function(data) {
+            if (room && room.localParticipant) {
+                const encodedData = new TextEncoder().encode(JSON.stringify(data));
+                room.localParticipant.publishData(encodedData, {
+                    reliable: true,
+                    topic: 'agent_communication'
+                });
+            }
+        };
+
+        // Language selector synchronization
+        function syncLanguageSelectors() {
+            const desktopSelect = document.getElementById('languageSelect');
+            const mobileSelect = document.getElementById('mobileLanguageSelect');
+            
+            // Keep selectors in sync
+            desktopSelect.addEventListener('change', () => {
+                mobileSelect.value = desktopSelect.value;
             });
             
-            if (speakers.length === 0) {
-                agentSpeaking = false;
-            }
+            mobileSelect.addEventListener('change', () => {
+                desktopSelect.value = mobileSelect.value;
+            });
         }
-        
-        function updateStatus(text, className) {
-            statusEl.textContent = text;
-            statusEl.className = `status ${className}`;
-        }
-        
-        function addMessage(type, text, flights = null) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${type}`;
-            
-            if (type !== 'system') {
-                const headerDiv = document.createElement('div');
-                headerDiv.className = 'message-header';
-                headerDiv.textContent = type === 'user' ? '👤 You' : '🤖 Assistant';
-                messageDiv.appendChild(headerDiv);
-            }
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            contentDiv.textContent = text;
-            messageDiv.appendChild(contentDiv);
-            
-            // If there are flight results, format them nicely
-            if (flights && flights.length > 0) {
-                const resultsDiv = document.createElement('div');
-                resultsDiv.className = 'flight-results';
-                resultsDiv.innerHTML = '<h4>✈️ Available Flights:</h4>';
-                
-                flights.forEach((flight, index) => {
-                    const flightDiv = document.createElement('div');
-                    flightDiv.className = 'flight-option';
-                    flightDiv.innerHTML = `
-                        <div>
-                            <div class="flight-airline">${index + 1}. ${flight.airline}</div>
-                            <div class="flight-time">🕐 ${flight.departure_time}</div>
-                        </div>
-                        <div class="flight-price">${flight.price}</div>
-                    `;
-                    resultsDiv.appendChild(flightDiv);
-                });
-                
-                contentDiv.appendChild(resultsDiv);
-            }
-            
-            messagesEl.appendChild(messageDiv);
-            
-            // Scroll to bottom
-            messagesEl.scrollTop = messagesEl.scrollHeight;
-        }
-        
-        // Handle page unload
-        window.addEventListener('beforeunload', () => {
-            if (room && room.state !== 'disconnected') {
-                room.disconnect();
-            }
-        });
-        
-        // Simulate receiving agent transcriptions (since we don't have the data channel set up)
-        // In production, this would come through the data channel or metadata
-        function simulateAgentTranscription(text) {
-            if (agentSpeaking) {
-                addMessage('assistant', text);
-            }
-        }
-        
+
         // Handle language change
         async function handleLanguageChange() {
             if (room && room.state === 'connected') {
                 // If connected, disconnect and reconnect with new language
-                addMessage('system', 'Switching language... Please wait.');
+                chatUI.addMessage('Switching language... Please wait.', 'system');
                 await disconnect();
                 
                 // Small delay to ensure clean disconnect
@@ -742,6 +1425,47 @@
                 }, 500);
             }
         }
+
+        async function handleMobileLanguageChange() {
+            // Sync with desktop selector and trigger change
+            document.getElementById('languageSelect').value = document.getElementById('mobileLanguageSelect').value;
+            await handleLanguageChange();
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', initializeLiveKit);
+
+        // Handle participant events
+        function handleParticipantConnected(participant) {
+            console.log('Participant connected:', participant.identity);
+            if (participant.identity.includes('agent')) {
+                chatUI.addMessage('🤖 AI Assistant joined - You can start speaking!', 'system');
+            }
+        }
+
+        function handleParticipantDisconnected(participant) {
+            console.log('Participant disconnected:', participant.identity);
+            if (participant.identity.includes('agent')) {
+                chatUI.addMessage('🤖 AI Assistant left the conversation', 'system');
+            }
+        }
+
+        // Prevent zoom on double tap for mobile
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (event) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (room && room.state !== 'disconnected') {
+                room.disconnect();
+            }
+        });
     </script>
 </body>
 </html>
