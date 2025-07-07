@@ -106,14 +106,6 @@ resource "aws_ecs_task_definition" "service" {
         awslogs-stream-prefix = "ecs"
       }
     }
-    
-    healthCheck = {
-      command     = ["CMD-SHELL", "curl -f http://localhost:${var.container_port}/health || exit 1"]
-      interval    = 30
-      timeout     = 5
-      retries     = 3
-      startPeriod = 60
-    }
   }])
 }
 
@@ -144,6 +136,27 @@ resource "aws_ecs_service" "service" {
   lifecycle {
     ignore_changes = [desired_count]
   }
+}
+
+# Force stop tasks when task definition changes
+resource "null_resource" "stop_tasks" {
+  triggers = {
+    task_definition = aws_ecs_task_definition.service.arn
+  }
+  
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Stopping all tasks for service ${aws_ecs_service.service.name}..."
+      TASK_ARNS=$(aws ecs list-tasks --cluster ${var.cluster_id} --service-name ${aws_ecs_service.service.name} --query 'taskArns[]' --output text)
+      if [ ! -z "$TASK_ARNS" ]; then
+        echo "$TASK_ARNS" | xargs -n1 -I {} aws ecs stop-task --cluster ${var.cluster_id} --task {} --reason "Terraform deployment - new task definition"
+      else
+        echo "No running tasks found"
+      fi
+    EOT
+  }
+  
+  depends_on = [aws_ecs_service.service]
 }
 
 data "aws_region" "current" {}

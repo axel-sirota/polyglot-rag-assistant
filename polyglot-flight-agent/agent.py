@@ -131,6 +131,13 @@ async def search_flights(
                     # Remove currency symbols and convert to float
                     if isinstance(price, str):
                         price = price.replace('$', '').replace(',', '').strip()
+                        # Handle cases where price is not a number
+                        if price.lower() in ['check website', 'n/a', 'not available', '']:
+                            return 999999.0
+                        try:
+                            return float(price)
+                        except ValueError:
+                            return 999999.0
                     return float(price)
                 
                 cheapest = min(flights, key=get_price)
@@ -144,6 +151,20 @@ async def search_flights(
                 nonstop_flights = [f for f in flights if f.get('stops', 0) == 0]
                 connecting_flights = [f for f in flights if f.get('stops', 0) > 0]
                 
+                # Track airlines with unavailable prices
+                airlines_without_prices = set()
+                
+                # Helper to format price for display
+                def format_price(flight):
+                    price = flight.get('price', '')
+                    airline = flight.get('airline', '')
+                    if isinstance(price, str):
+                        price_lower = price.lower()
+                        if price_lower in ['check website', 'n/a', 'not available', '']:
+                            airlines_without_prices.add(airline)
+                            return "price not available"
+                    return price
+                
                 # Format response in human-friendly way
                 response_parts = []
                 
@@ -151,7 +172,7 @@ async def search_flights(
                     response_parts.append("Non stop flights:")
                     for flight in nonstop_flights[:5]:
                         response_parts.append(
-                            f"- Airline: {flight['airline']}, Price: {flight['price']}"
+                            f"- Airline: {flight['airline']}, Price: {format_price(flight)}"
                         )
                 
                 if connecting_flights:
@@ -171,7 +192,7 @@ async def search_flights(
                             stops_info = f", {flight['stops']} stop(s)"
                         
                         response_parts.append(
-                            f"- Airline: {flight['airline']}, price: {flight['price']}, "
+                            f"- Airline: {flight['airline']}, price: {format_price(flight)}, "
                             f"duration: {flight.get('duration', 'TBD')}{stops_info}"
                         )
                 
@@ -190,6 +211,14 @@ async def search_flights(
                 # Add note about more options if needed
                 if flight_count > 15:
                     final_message += f"\n\nShowing top results from {flight_count} total flights. Need specific times or airlines?"
+                
+                # Add note about airlines without prices
+                if airlines_without_prices:
+                    airlines_list = list(airlines_without_prices)
+                    if len(airlines_list) == 1:
+                        final_message += f"\n\nNote: I couldn't fetch the price for {airlines_list[0]} flights. You may need to check their website directly."
+                    else:
+                        final_message += f"\n\nNote: I couldn't fetch prices for these airlines: {', '.join(airlines_list)}. You may need to check their websites directly."
                 
                 return {
                     "status": "success",
