@@ -107,6 +107,9 @@ module "agent_service" {
     DEEPGRAM_API_KEY     = var.deepgram_api_key
     CARTESIA_API_KEY     = var.cartesia_api_key
     API_SERVER_URL       = "http://${module.alb.alb_dns_name}"
+    AMADEUS_CLIENT_ID    = var.amadeus_client_id
+    AMADEUS_CLIENT_SECRET = var.amadeus_client_secret
+    AMADEUS_BASE_URL     = var.amadeus_base_url
   }
 }
 
