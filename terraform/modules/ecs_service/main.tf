@@ -84,12 +84,17 @@ resource "aws_ecs_task_definition" "service" {
       protocol      = "tcp"
     }]
     
-    environment = [
+    environment = concat([
       for key, value in var.environment_variables : {
         name  = key
         value = value
       }
-    ]
+    ], [
+      {
+        name  = "DEPLOYMENT_TIMESTAMP"
+        value = timestamp()
+      }
+    ])
     
 # Secrets removed - using environment variables instead
     
