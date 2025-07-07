@@ -673,7 +673,67 @@ DATE HANDLING:
                 else:
                     logger.debug(f"📊 Metrics: {event.metrics.type}")
         
+        
+        # Monitor track publishing
+        @ctx.room.on("track_published")
+        def on_track_published(publication: rtc.LocalTrackPublication, participant: rtc.LocalParticipant):
+            logger.info(f"📡 Track published: {publication.kind} by {participant.identity}")
+        
+        # Handle participant metadata updates
+        @ctx.room.on("participant_metadata_changed")
+        def on_participant_metadata_changed(participant: rtc.Participant, prev_metadata: str):
+            logger.info(f"📝 METADATA CHANGED for {participant.identity}")
+            logger.info(f"   - Previous: '{prev_metadata}'")
+            logger.info(f"   - Current: '{participant.metadata}'")
+            if participant.metadata:
+                try:
+                    metadata = json.loads(participant.metadata)
+                    new_language = metadata.get("language")
+                    if new_language and new_language != language:
+                        logger.info(f"🌐 Language preference updated to: {new_language}")
+                        logger.warning("⚠️  Cannot update STT language after initialization - user should reconnect")
+                except Exception as e:
+                    logger.error(f"❌ Error parsing participant metadata: {e}")
+        
+        # Handle audio track subscription (must be sync callback)
+        @ctx.room.on("track_subscribed")
+        def on_track_subscribed(
+            track: rtc.Track, 
+            publication: rtc.TrackPublication, 
+            participant: rtc.RemoteParticipant
+        ):
+            logger.info(f"📡 TRACK SUBSCRIBED: {track.kind} from {participant.identity}")
+            if track.kind == rtc.TrackKind.KIND_AUDIO:
+                logger.info(f"🎤 Audio track detected - checking participant metadata...")
+                # Check if participant has language preference
+                if participant.metadata:
+                    try:
+                        metadata = json.loads(participant.metadata)
+                        participant_lang = metadata.get("language", "en")
+                        logger.info(f"   - Participant language preference: {participant_lang}")
+                    except Exception as e:
+                        logger.error(f"   ❌ Error parsing metadata: {e}")
+                else:
+                    logger.info(f"   - No metadata found for participant")
+        
+        # Start the session with the room
+        logger.info("="*50)
+        logger.info("🚀 STARTING AGENT SESSION...")
+        logger.info("="*50)
+        logger.info("🔧 Starting session with default configuration")
+        logger.info("   Agent will handle participants joining/leaving automatically")
+        await session.start(
+            agent=agent, 
+            room=ctx.room
+        )
+        
+        # The agent will now handle participants joining
+        logger.info(f"✅ Agent session started successfully!")
+        logger.info(f"🏠 Room: {ctx.room.name}")
+        logger.info(f"🌍 Language: {language}")
+        
         # ADD THESE NEW EVENT HANDLERS for persistence (MUST BE SYNC!)
+        # Now that session exists, handlers can access it via closure
         @ctx.room.on("participant_connected")
         def on_participant_connected(participant: rtc.RemoteParticipant):
             """Handle new and returning participants - SYNC callback"""
@@ -762,64 +822,6 @@ DATE HANDLING:
                             greeted_participants.discard(identity_to_clean)
                 
                 asyncio.create_task(cleanup_old_session())
-        
-        # Monitor track publishing
-        @ctx.room.on("track_published")
-        def on_track_published(publication: rtc.LocalTrackPublication, participant: rtc.LocalParticipant):
-            logger.info(f"📡 Track published: {publication.kind} by {participant.identity}")
-        
-        # Handle participant metadata updates
-        @ctx.room.on("participant_metadata_changed")
-        def on_participant_metadata_changed(participant: rtc.Participant, prev_metadata: str):
-            logger.info(f"📝 METADATA CHANGED for {participant.identity}")
-            logger.info(f"   - Previous: '{prev_metadata}'")
-            logger.info(f"   - Current: '{participant.metadata}'")
-            if participant.metadata:
-                try:
-                    metadata = json.loads(participant.metadata)
-                    new_language = metadata.get("language")
-                    if new_language and new_language != language:
-                        logger.info(f"🌐 Language preference updated to: {new_language}")
-                        logger.warning("⚠️  Cannot update STT language after initialization - user should reconnect")
-                except Exception as e:
-                    logger.error(f"❌ Error parsing participant metadata: {e}")
-        
-        # Handle audio track subscription (must be sync callback)
-        @ctx.room.on("track_subscribed")
-        def on_track_subscribed(
-            track: rtc.Track, 
-            publication: rtc.TrackPublication, 
-            participant: rtc.RemoteParticipant
-        ):
-            logger.info(f"📡 TRACK SUBSCRIBED: {track.kind} from {participant.identity}")
-            if track.kind == rtc.TrackKind.KIND_AUDIO:
-                logger.info(f"🎤 Audio track detected - checking participant metadata...")
-                # Check if participant has language preference
-                if participant.metadata:
-                    try:
-                        metadata = json.loads(participant.metadata)
-                        participant_lang = metadata.get("language", "en")
-                        logger.info(f"   - Participant language preference: {participant_lang}")
-                    except Exception as e:
-                        logger.error(f"   ❌ Error parsing metadata: {e}")
-                else:
-                    logger.info(f"   - No metadata found for participant")
-        
-        # Start the session with the room
-        logger.info("="*50)
-        logger.info("🚀 STARTING AGENT SESSION...")
-        logger.info("="*50)
-        logger.info("🔧 Starting session with default configuration")
-        logger.info("   Agent will handle participants joining/leaving automatically")
-        await session.start(
-            agent=agent, 
-            room=ctx.room
-        )
-        
-        # The agent will now handle participants joining
-        logger.info(f"✅ Agent session started successfully!")
-        logger.info(f"🏠 Room: {ctx.room.name}")
-        logger.info(f"🌍 Language: {language}")
         
         # Check for existing participants and trigger the connection event
         logger.info("👥 Checking for existing participants...")
