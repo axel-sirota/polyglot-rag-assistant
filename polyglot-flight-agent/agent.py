@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from livekit.agents import (
     Agent, AgentSession, JobContext, RunContext,
     WorkerOptions, cli, function_tool, JobProcess, AutoSubscribe,
-    io
+    io, RoomInputOptions
 )
 from livekit.plugins import openai, silero, deepgram, cartesia
 from livekit import rtc
@@ -344,7 +344,12 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🚀 AGENT STARTING - Room: {ctx.room.name}")
     logger.info(f"📋 Job ID: {ctx.job.id if hasattr(ctx.job, 'id') else 'N/A'}")
     logger.info(f"🔧 Process ID: {os.getpid()}")
+    logger.info(f"📊 Job metadata: {ctx.job.metadata if hasattr(ctx.job, 'metadata') else 'None'}")
+    logger.info(f"📊 Room metadata: {ctx.room.metadata}")
     logger.info("="*60)
+    
+    # Note: You may see a 404 error from OpenAI during startup - this is harmless
+    # It's just the OpenAI client library checking for available endpoints
     
     try:
         # Connect to the room with AUDIO_ONLY to prevent video processing overhead
@@ -703,7 +708,12 @@ DATE HANDLING:
         logger.info("="*50)
         logger.info("🚀 STARTING AGENT SESSION...")
         logger.info("="*50)
-        await session.start(agent=agent, room=ctx.room)
+        logger.info("🔧 Starting session with default configuration")
+        logger.info("   Agent will handle participants joining/leaving automatically")
+        await session.start(
+            agent=agent, 
+            room=ctx.room
+        )
         
         # The agent will now handle participants joining
         logger.info(f"✅ Agent session started successfully!")
@@ -759,17 +769,68 @@ DATE HANDLING:
         raise
 
 
+async def handle_job_request(request):
+    """Debug handler to see if jobs are being offered"""
+    logger.info("="*60)
+    logger.info(f"🎯 JOB REQUEST RECEIVED!")
+    logger.info(f"🎯 Room: {request.room}")
+    logger.info(f"🎯 Job ID: {request.job_id}")
+    logger.info(f"🎯 Participant count: {request.participant_count}")
+    logger.info(f"🎯 Publisher count: {request.publisher_count}")
+    
+    # Log all attributes of request for debugging
+    logger.info("📋 Request attributes:")
+    for attr in dir(request):
+        if not attr.startswith('_'):
+            try:
+                value = getattr(request, attr)
+                logger.info(f"   - {attr}: {value}")
+            except:
+                pass
+    logger.info("="*60)
+    
+    # Always accept jobs for debugging
+    return True
+
+
 if __name__ == "__main__":
-    # Run the agent with LiveKit CLI
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            prewarm_fnc=prewarm,
-            port=8082,  # Set static debug server port
-            host="0.0.0.0",
-            ws_url=os.getenv("LIVEKIT_URL", "wss://polyglot-rag-assistant-3l6xagej.livekit.cloud"),
-            api_key=os.getenv("LIVEKIT_API_KEY"),
-            api_secret=os.getenv("LIVEKIT_API_SECRET"),
-            num_idle_processes=1  # Only 1 process to prevent multiple agents in same room
-        )
+    # Debug: Create WorkerOptions and check for agent_name
+    logger.info("="*60)
+    logger.info("🔧 CREATING WORKER OPTIONS...")
+    
+    options = WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        prewarm_fnc=prewarm,
+        request_fnc=handle_job_request,  # Updated function name
+        port=8082,
+        host="0.0.0.0",
+        ws_url=os.getenv("LIVEKIT_URL", "wss://polyglot-rag-assistant-3l6xagej.livekit.cloud"),
+        api_key=os.getenv("LIVEKIT_API_KEY"),
+        api_secret=os.getenv("LIVEKIT_API_SECRET"),
+        num_idle_processes=1,
+        shutdown_process_timeout=30
     )
+    
+    # Check if agent_name exists
+    if hasattr(options, 'agent_name'):
+        logger.warning(f"⚠️  agent_name is set to: '{options.agent_name}'")
+        logger.warning("⚠️  This will PREVENT automatic dispatch!")
+    else:
+        logger.info("✅ agent_name not set (good for automatic dispatch)")
+    
+    # Log all attributes of options
+    logger.info("📋 WorkerOptions attributes:")
+    for attr in dir(options):
+        if not attr.startswith('_'):
+            try:
+                value = getattr(options, attr)
+                if value is not None:
+                    logger.info(f"   - {attr}: {value}")
+            except:
+                pass
+    
+    logger.info("="*60)
+    logger.info("🚀 STARTING AGENT...")
+    
+    # Run the agent with LiveKit CLI
+    cli.run_app(options)

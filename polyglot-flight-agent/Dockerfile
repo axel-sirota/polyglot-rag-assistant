@@ -45,5 +45,5 @@ ENV CARTESIA_API_KEY=""
 # API Server URL - defaults to ECS production ALB
 ENV API_SERVER_URL="http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com"
 
-# Default command to run the agent in start mode
-CMD ["python", "agent.py", "start"]
+# Default command to run the agent in dev mode with debug logging
+CMD ["python", "agent.py", "dev", "--log-level", "DEBUG"]
