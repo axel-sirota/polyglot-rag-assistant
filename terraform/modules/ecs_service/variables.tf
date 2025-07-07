@@ -29,8 +29,9 @@ variable "subnet_ids" {
 }
 
 variable "target_group_arn" {
-  description = "Target group ARN"
+  description = "Target group ARN (optional - set to null for services without ALB)"
   type        = string
+  default     = null
 }
 
 variable "container_image" {

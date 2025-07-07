@@ -5,7 +5,7 @@ set -e
 
 # Configuration
 DOCKER_USERNAME=${DOCKER_USERNAME:-"axelsirota"}
-IMAGE_NAME="polyglot-flight-agent"
+IMAGE_NAME="polyglot-agent"
 TAG=${1:-"latest"}
 
 echo "🐳 Building LiveKit Agent Docker image..."

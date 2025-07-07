@@ -124,10 +124,13 @@ resource "aws_ecs_service" "service" {
     security_groups = [aws_security_group.service.id]
   }
   
-  load_balancer {
-    target_group_arn = var.target_group_arn
-    container_name   = var.service_name
-    container_port   = var.container_port
+  dynamic "load_balancer" {
+    for_each = var.target_group_arn != null ? [1] : []
+    content {
+      target_group_arn = var.target_group_arn
+      container_name   = var.service_name
+      container_port   = var.container_port
+    }
   }
   
   lifecycle {
