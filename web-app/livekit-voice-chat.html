@@ -416,6 +416,7 @@
             margin-top: 4px;
             opacity: 0;
             transition: opacity 0.2s ease;
+            padding: 0 16px;
         }
 
         .message-wrapper:hover .message-time {
@@ -424,7 +425,13 @@
 
         .message-wrapper.sent .message-time {
             text-align: right;
-            color: rgba(255, 255, 255, 0.7);
+            color: var(--meta-text);
+            padding-right: 0;
+        }
+        
+        .message-wrapper.received .message-time {
+            text-align: left;
+            padding-left: 40px; /* Account for avatar width */
         }
 
         /* Typing Indicator */
@@ -907,14 +914,18 @@
             }
 
             scrollToBottom(smooth = true) {
-                if (smooth) {
-                    this.chatMessages.scrollTo({
-                        top: this.chatMessages.scrollHeight,
-                        behavior: 'smooth'
-                    });
-                } else {
-                    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-                }
+                // Use requestAnimationFrame to ensure DOM has updated
+                requestAnimationFrame(() => {
+                    if (smooth) {
+                        this.chatMessages.scrollTo({
+                            top: this.chatMessages.scrollHeight,
+                            behavior: 'smooth'
+                        });
+                    } else {
+                        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+                    }
+                    console.log('Scrolled to:', this.chatMessages.scrollHeight);
+                });
             }
 
             showNewMessageIndicator() {
@@ -926,26 +937,40 @@
             }
 
             addMessage(text, sender = 'assistant', data = null) {
+                console.log('Adding message:', { text, sender, data });
+                
+                if (!this.chatMessages) {
+                    console.error('Chat messages container not found!');
+                    return;
+                }
+                
                 const currentTime = Date.now();
                 const shouldGroup = this.lastSender === sender && 
                                   this.lastMessageTime && 
                                   (currentTime - this.lastMessageTime) < this.groupingThreshold;
 
                 const messageWrapper = document.createElement('div');
-                messageWrapper.className = `message-wrapper ${sender}`;
-                if (shouldGroup) {
+                
+                // Map sender to proper CSS class
+                let senderClass = sender;
+                if (sender === 'user') {
+                    senderClass = 'sent';
+                } else if (sender === 'assistant') {
+                    senderClass = 'received';
+                } else if (sender === 'system') {
+                    senderClass = 'system';
+                }
+                
+                messageWrapper.className = `message-wrapper ${senderClass}`;
+                if (shouldGroup && sender !== 'system') {
                     messageWrapper.classList.add('grouped');
                 }
 
-                // Create avatar
-                if (!shouldGroup && sender !== 'system') {
-                    const avatar = document.createElement('div');
-                    avatar.className = `avatar ${sender}`;
-                    avatar.textContent = sender === 'user' ? '👤' : '✈️';
-                    messageWrapper.appendChild(avatar);
-                }
-
-                // Create message content
+                // For Zendesk-style layout, we need to consider the order of elements
+                // For sent messages (user): content first, then avatar
+                // For received messages (assistant): avatar first, then content
+                
+                // Create message content container
                 const messageContent = document.createElement('div');
                 messageContent.className = 'message-content';
 
@@ -954,7 +979,7 @@
                 chatBubble.className = 'chat-bubble';
 
                 // Handle flight data
-                if (data && data.type === 'flight_results') {
+                if (data && data.type === 'flight_results' && data.flights) {
                     chatBubble.innerHTML = text;
                     const flightContainer = this.createFlightResults(data.flights);
                     chatBubble.appendChild(flightContainer);
@@ -973,12 +998,44 @@
                 });
                 messageContent.appendChild(timestamp);
 
-                messageWrapper.appendChild(messageContent);
+                // Create avatar if not grouped and not system message
+                let avatar = null;
+                if (!shouldGroup && sender !== 'system') {
+                    avatar = document.createElement('div');
+                    // Use the original sender value for avatar class to match CSS
+                    avatar.className = `avatar ${sender}`;
+                    avatar.textContent = sender === 'user' ? '👤' : '✈️';
+                }
+
+                // Add elements in correct order based on message type
+                if (senderClass === 'sent' || sender === 'user') {
+                    // User messages: content first, then avatar
+                    messageWrapper.appendChild(messageContent);
+                    if (avatar) messageWrapper.appendChild(avatar);
+                } else if (senderClass === 'received' || sender === 'assistant') {
+                    // Assistant messages: avatar first, then content
+                    if (avatar) messageWrapper.appendChild(avatar);
+                    messageWrapper.appendChild(messageContent);
+                } else {
+                    // System messages: just content
+                    messageWrapper.appendChild(messageContent);
+                }
+
+                // Append to chat
                 this.chatMessages.appendChild(messageWrapper);
+                
+                console.log('Message added to DOM:', {
+                    wrapper: messageWrapper,
+                    parentElement: this.chatMessages,
+                    childCount: this.chatMessages.children.length
+                });
 
                 // Update last sender info
                 this.lastSender = sender;
                 this.lastMessageTime = currentTime;
+
+                // Force layout recalculation
+                void this.chatMessages.offsetHeight;
 
                 // Handle scrolling
                 if (this.shouldAutoScroll()) {
@@ -1143,6 +1200,18 @@
 
         async function initializeLiveKit() {
             chatUI = new ChatUIManager();
+            
+            // Test the chat UI is working
+            console.log('Chat UI initialized, testing messages...');
+            setTimeout(() => {
+                chatUI.addMessage('Test: User message appearance', 'user');
+                setTimeout(() => {
+                    chatUI.addMessage('Test: Assistant message appearance', 'assistant');
+                    setTimeout(() => {
+                        chatUI.addMessage('Test: System message', 'system');
+                    }, 500);
+                }, 500);
+            }, 1000);
 
             // Initialize room
             room = new LivekitClient.Room({
@@ -1465,6 +1534,60 @@
             if (room && room.state !== 'disconnected') {
                 room.disconnect();
             }
+        });
+
+        // Test function to verify messages are working
+        function testMessages() {
+            console.log('Testing message display...');
+            
+            // Test user message
+            chatUI.addMessage("Hello, I need a flight from New York to London", 'user');
+            
+            // Test assistant message
+            setTimeout(() => {
+                chatUI.addMessage("I'd be happy to help you find flights from New York to London. Let me search for available options.", 'assistant');
+            }, 1000);
+            
+            // Test flight results
+            setTimeout(() => {
+                const testFlights = [
+                    {
+                        airline: 'Delta Airlines',
+                        flightNumber: 'DL 234',
+                        departure: '9:30 AM',
+                        arrival: '9:45 PM',
+                        duration: '7h 15m',
+                        stops: 'Nonstop',
+                        aircraft: 'Boeing 777',
+                        price: 689
+                    },
+                    {
+                        airline: 'British Airways',
+                        flightNumber: 'BA 112',
+                        departure: '5:15 PM',
+                        arrival: '6:30 AM+1',
+                        duration: '7h 15m',
+                        stops: 'Nonstop',
+                        aircraft: 'Airbus A380',
+                        price: 724
+                    }
+                ];
+                
+                const flightData = {
+                    type: 'flight_results',
+                    flights: testFlights
+                };
+                
+                chatUI.addMessage("I found 2 nonstop flights for you:", 'assistant', flightData);
+            }, 2000);
+        }
+
+        // Initialize and test after DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            window.chatUI = new ChatUIManager();
+            
+            // Uncomment to test messages
+            // setTimeout(testMessages, 1000);
         });
     </script>
 </body>
