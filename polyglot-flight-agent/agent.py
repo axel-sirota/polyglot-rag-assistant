@@ -9,6 +9,11 @@ from typing import Dict, Any
 from datetime import datetime, date
 import json
 import asyncio
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import services
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -26,6 +31,9 @@ from typing import Dict, Optional
 
 # Import our audio utilities
 from audio_utils import resample_audio, create_audio_frame_48khz, generate_test_tone, AudioFrameBuffer
+
+# Import language configuration
+from services.language_config import get_deepgram_config, log_language_configuration, get_language_name
 
 # Load environment variables
 load_dotenv()
@@ -530,25 +538,26 @@ DATE HANDLING:
         if not use_realtime:
             # Use reliable STT-LLM-TTS pipeline that properly publishes audio tracks
             logger.info("🎵 Using STT-LLM-TTS pipeline for working audio output")
-            # Map UI language codes to Deepgram language codes
-            language_mapping = {
-                "es": "es",  # Spanish
-                "en": "en-US",  # English US
-                "fr": "fr",  # French
-                "de": "de",  # German
-                "it": "it",  # Italian
-                "pt": "pt",  # Portuguese
-                "zh": "zh",  # Chinese
-                "ja": "ja",  # Japanese
-                "ko": "ko",  # Korean
-            }
-            deepgram_language = language_mapping.get(language, "en-US")
-            logger.info(f"🔤 Language mapping: '{language}' -> '{deepgram_language}'")
+            
+            # Get proper Deepgram configuration for the language
+            deepgram_config = get_deepgram_config(language)
+            
+            if not deepgram_config:
+                # Language not supported - fallback to multilingual mode
+                logger.warning(f"❌ Language '{language}' ({get_language_name(language)}) not supported by Deepgram")
+                logger.warning(f"🔄 Falling back to multilingual mode")
+                deepgram_config = {"model": "nova-3", "language": "multi"}
+                
+                # Update agent instructions to acknowledge the fallback
+                logger.info("📝 Note: Agent will be informed about multilingual mode")
+            
+            # Log the language configuration details
+            log_language_configuration(language, deepgram_config)
             
             logger.info("🔧 Configuring STT-LLM-TTS components:")
             logger.info("📊 STT (Deepgram):")
-            logger.info(f"   - Model: nova-3")
-            logger.info(f"   - Language: {deepgram_language}")
+            logger.info(f"   - Model: {deepgram_config['model']}")
+            logger.info(f"   - Language: {deepgram_config['language']}")
             logger.info(f"   - Sample rate: 48000 Hz")
             
             logger.info("🧠 LLM (OpenAI):")
@@ -561,8 +570,8 @@ DATE HANDLING:
             session = AgentSession(
                 vad=vad,
                 stt=deepgram.STT(
-                    model="nova-3",
-                    language=deepgram_language,  # Use the mapped language code
+                    model=deepgram_config["model"],
+                    language=deepgram_config["language"],
                     sample_rate=48000  # Match WebRTC requirement
                 ),
                 llm=openai.LLM(
@@ -763,6 +772,12 @@ DATE HANDLING:
                             "de": "Willkommen zurück! Ich bin immer noch hier. Wie kann ich Ihnen weiterhin bei Ihrer Flugsuche helfen?",
                             "it": "Bentornato! Sono ancora qui. Come posso continuare ad aiutarti con la ricerca del volo?",
                             "pt": "Bem-vindo de volta! Ainda estou aqui. Como posso continuar ajudando com sua busca de voos?",
+                            "zh": "欢迎回来！我还在这里。我如何继续帮助您搜索航班？",
+                            "ja": "おかえりなさい！まだここにいます。フライト検索を続けるお手伝いをしましょうか？",
+                            "ko": "다시 오신 것을 환영합니다! 아직 여기 있습니다. 항공편 검색을 계속 도와드릴까요?",
+                            "ar": "مرحباً بعودتك! ما زلت هنا. كيف يمكنني الاستمرار في مساعدتك في البحث عن رحلتك؟",
+                            "hi": "वापस आने का स्वागत है! मैं अभी भी यहाँ हूँ। मैं आपकी उड़ान खोज में कैसे मदद कर सकता हूँ?",
+                            "ru": "С возвращением! Я все еще здесь. Как я могу продолжить помогать вам с поиском рейсов?",
                         }
                         
                         message = welcome_messages.get(language, welcome_messages["en"])
@@ -797,6 +812,12 @@ DATE HANDLING:
                             "de": "Hallo! Ich bin Ihr mehrsprachiger Flugsuche-Assistent. Wie kann ich Ihnen heute bei der Flugsuche helfen?",
                             "it": "Ciao! Sono il tuo assistente multilingue per la ricerca di voli. Come posso aiutarti a trovare voli oggi?",
                             "pt": "Olá! Sou seu assistente multilíngue de busca de voos. Como posso ajudá-lo a encontrar voos hoje?",
+                            "zh": "你好！我是您的多语言航班搜索助手。今天我如何帮助您寻找航班？",
+                            "ja": "こんにちは！私はあなたの多言語フライト検索アシスタントです。今日はどのようにフライトを探すお手伝いをしましょうか？",
+                            "ko": "안녕하세요! 저는 다국어 항공편 검색 도우미입니다. 오늘 항공편을 찾는 데 어떻게 도와드릴까요?",
+                            "ar": "مرحباً! أنا مساعدك متعدد اللغات للبحث عن الرحلات الجوية. كيف يمكنني مساعدتك في العثور على رحلات اليوم؟",
+                            "hi": "नमस्ते! मैं आपका बहुभाषी उड़ान खोज सहायक हूं। आज मैं आपको उड़ानें खोजने में कैसे मदद कर सकता हूं?",
+                            "ru": "Здравствуйте! Я ваш многоязычный помощник по поиску рейсов. Как я могу помочь вам найти рейсы сегодня?",
                         }
                         
                         greeting_message = greetings.get(language, greetings["en"])
