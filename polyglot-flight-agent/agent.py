@@ -774,23 +774,19 @@ async def handle_job_request(request):
     logger.info("="*60)
     logger.info(f"🎯 JOB REQUEST RECEIVED!")
     logger.info(f"🎯 Room: {request.room}")
-    logger.info(f"🎯 Job ID: {request.job_id}")
-    logger.info(f"🎯 Participant count: {request.participant_count}")
-    logger.info(f"🎯 Publisher count: {request.publisher_count}")
     
-    # Log all attributes of request for debugging
-    logger.info("📋 Request attributes:")
-    for attr in dir(request):
-        if not attr.startswith('_'):
-            try:
-                value = getattr(request, attr)
-                logger.info(f"   - {attr}: {value}")
-            except:
-                pass
+    # Try to accept the job using the accept method
+    try:
+        logger.info("✅ Calling request.accept()")
+        await request.accept()
+        logger.info("✅ Job accepted successfully")
+    except Exception as e:
+        logger.error(f"❌ Error accepting job: {e}")
+        # If accept() doesn't work, try returning True
+        logger.info("🔄 Falling back to returning True")
+        return True
+    
     logger.info("="*60)
-    
-    # Always accept jobs for debugging
-    return True
 
 
 if __name__ == "__main__":
@@ -801,7 +797,7 @@ if __name__ == "__main__":
     options = WorkerOptions(
         entrypoint_fnc=entrypoint,
         prewarm_fnc=prewarm,
-        request_fnc=handle_job_request,  # Updated function name
+        # request_fnc removed - let LiveKit handle job acceptance automatically
         port=8082,
         host="0.0.0.0",
         ws_url=os.getenv("LIVEKIT_URL", "wss://polyglot-rag-assistant-3l6xagej.livekit.cloud"),
@@ -811,12 +807,12 @@ if __name__ == "__main__":
         shutdown_process_timeout=30
     )
     
-    # Check if agent_name exists
-    if hasattr(options, 'agent_name'):
+    # Check if agent_name exists and is not empty
+    if hasattr(options, 'agent_name') and options.agent_name:
         logger.warning(f"⚠️  agent_name is set to: '{options.agent_name}'")
         logger.warning("⚠️  This will PREVENT automatic dispatch!")
     else:
-        logger.info("✅ agent_name not set (good for automatic dispatch)")
+        logger.info("✅ agent_name not set or empty (good for automatic dispatch)")
     
     # Log all attributes of options
     logger.info("📋 WorkerOptions attributes:")
