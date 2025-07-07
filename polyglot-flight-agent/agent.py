@@ -340,30 +340,45 @@ async def entrypoint(ctx: JobContext):
         # Get language preference from room metadata or participant metadata
         language = "en"  # Default to English
         
-        # Check room metadata first
-        if ctx.room.metadata:
+        # Helper function to safely extract language from metadata
+        def get_language_from_metadata(metadata_string):
             try:
-                room_metadata = json.loads(ctx.room.metadata)
-                language = room_metadata.get("language", "en")
-                logger.info(f"Language from room metadata: {language}")
-            except:
-                pass
+                if not metadata_string:
+                    return None
+                metadata = json.loads(metadata_string)
+                return metadata.get("language")
+            except Exception as e:
+                logger.error(f"Error parsing metadata: {e}, metadata was: '{metadata_string}'")
+                return None
         
-        # Check if there are already participants with metadata
-        # Wait a bit for participants to join with metadata
-        await asyncio.sleep(0.5)
+        # Check room metadata first
+        room_language = get_language_from_metadata(ctx.room.metadata)
+        if room_language:
+            language = room_language
+            logger.info(f"Language from room metadata: {language}")
         
+        # Check participants that are already connected (no need to wait)
+        # Their metadata is immediately available upon connection
         for participant in ctx.room.remote_participants.values():
-            if participant.metadata:
-                try:
-                    metadata = json.loads(participant.metadata)
-                    participant_language = metadata.get("language")
-                    if participant_language:
-                        language = participant_language
-                        logger.info(f"Got language from participant {participant.identity}: {language}")
-                        break
-                except:
-                    pass
+            logger.info(f"Checking participant {participant.identity}, metadata: '{participant.metadata}'")
+            participant_language = get_language_from_metadata(participant.metadata)
+            if participant_language:
+                language = participant_language
+                logger.info(f"Got language from participant {participant.identity}: {language}")
+                break
+        
+        # Also listen for new participants joining
+        @ctx.room.on("participant_connected")
+        def on_participant_connected(participant: rtc.RemoteParticipant):
+            nonlocal language
+            logger.info(f"New participant connected: {participant.identity} with metadata: '{participant.metadata}'")
+            # Check their initial metadata immediately
+            participant_language = get_language_from_metadata(participant.metadata)
+            if participant_language and participant_language != language:
+                language = participant_language
+                logger.info(f"Updated language from new participant {participant.identity}: {language}")
+                # Note: Cannot update STT language after initialization
+                # This is logged for awareness
         
         logger.info(f"Using language: {language}")
         
@@ -603,16 +618,15 @@ DATE HANDLING:
         # Handle participant metadata updates
         @ctx.room.on("participant_metadata_changed")
         def on_participant_metadata_changed(participant: rtc.Participant, prev_metadata: str):
-            if participant.metadata:
-                try:
-                    metadata = json.loads(participant.metadata)
-                    new_language = metadata.get("language")
-                    if new_language and new_language != language:
-                        logger.info(f"Language preference updated to: {new_language}")
-                        # Note: Cannot update STT language after initialization
-                        # User should reconnect with new language preference
-                except Exception as e:
-                    logger.error(f"Error parsing participant metadata: {e}")
+            logger.info(f"Metadata changed for {participant.identity}: '{prev_metadata}' -> '{participant.metadata}'")
+            new_language = get_language_from_metadata(participant.metadata)
+            old_language = get_language_from_metadata(prev_metadata)
+            
+            if new_language and new_language != old_language:
+                logger.info(f"Language preference updated from {old_language} to {new_language}")
+                # Note: Cannot update STT language after initialization
+                # User should reconnect with new language preference
+                logger.warning("Language change detected but STT cannot be reconfigured. User should reconnect.")
         
         # Handle audio track subscription (must be sync callback)
         @ctx.room.on("track_subscribed")
@@ -624,13 +638,9 @@ DATE HANDLING:
             if track.kind == rtc.TrackKind.KIND_AUDIO:
                 logger.info(f"🎤 Audio track subscribed from {participant.identity}")
                 # Check if participant has language preference
-                if participant.metadata:
-                    try:
-                        metadata = json.loads(participant.metadata)
-                        participant_lang = metadata.get("language", "en")
-                        logger.info(f"Participant {participant.identity} language: {participant_lang}")
-                    except:
-                        pass
+                participant_lang = get_language_from_metadata(participant.metadata)
+                if participant_lang:
+                    logger.info(f"Participant {participant.identity} language: {participant_lang}")
         
         # Start the session with the room
         logger.info("Starting agent session...")
