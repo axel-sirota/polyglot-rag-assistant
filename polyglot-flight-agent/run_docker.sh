@@ -13,7 +13,7 @@ docker build -t polyglot-flight-agent .
 echo "Running agent with host networking and debug ports..."
 docker run \
   --name polyglot-flight-agent \
-  --rm \
+  -d \
   --network=host \
   -p 8081:8081 \
   -p 55099:55099 \
