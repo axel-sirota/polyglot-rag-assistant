@@ -93,8 +93,8 @@ async def search_flights(
     origin: str,
     destination: str,
     departure_date: str,
-    preferred_airline: str = None,
-    cabin_class: str = "economy"
+    preferred_airline: str | None = None,
+    cabin_class: str | None = "economy"
 ) -> Dict[str, Any]:
     """Search for available flights between cities.
     
