@@ -648,6 +648,9 @@ class FlightSearchServer:
         enriched = []
         
         for flight in all_flights:
+            # Skip "Multiple airlines" results which are typically aggregator results
+            if flight.get('airline', '').lower() == 'multiple airlines':
+                continue
             # Create a unique key based on flight number, departure time, or airline+times
             flight_key = None
             
