@@ -9,6 +9,7 @@ from typing import Dict, Any
 from datetime import datetime, date
 import json
 import asyncio
+import re
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -39,6 +40,24 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def strip_markdown(text: str) -> str:
+    """Remove all markdown formatting from text for TTS"""
+    # Remove bold/italic markers
+    text = re.sub(r'\*+([^*]+)\*+', r'\1', text)
+    # Remove headers
+    text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
+    # Remove links [text](url)
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Remove bare URLs
+    text = re.sub(r'https?://[^\s]+', '', text)
+    # Remove any remaining brackets
+    text = text.replace('[', '').replace(']', '')
+    # Remove code blocks
+    text = re.sub(r'```[^```]+```', '', text, flags=re.DOTALL)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    return text.strip()
 
 # Global dictionary to store session state outside of AgentSession
 # This enables persistence across disconnections
@@ -512,8 +531,28 @@ CONVERSATION STYLE:
 - When presenting flights, list ALL options clearly, not just top 3
 - Ask if they want to filter results when there are many options
 - If user switches languages mid-conversation, continue responding but acknowledge the switch
-- NEVER use markdown formatting like asterisks (*), hashes (#), or any other markdown symbols
-- Your responses will be spoken aloud, so format them as natural speech only
+
+CRITICAL FORMATTING RULES FOR TEXT-TO-SPEECH:
+- NEVER use ANY markdown formatting whatsoever
+- NO asterisks (*) for bold or italics
+- NO hashes (#) for headers
+- NO brackets [] or parentheses () for links
+- NO URLs or web addresses
+- NO booking links
+- Your responses will be SPOKEN ALOUD by TTS, so format as natural speech only
+
+REQUIRED FLIGHT RESULT FORMAT:
+When presenting flight results, you MUST use EXACTLY this format:
+
+Non stop flights:
+- Airline: American Airlines, Price: 450 dollars
+- Airline: United, Price: 520 dollars
+
+Flights with layover:
+- Airline: Delta, Price: 380 dollars, Duration: 8 hours, stops: 1
+- Airline: Southwest, Price: 295 dollars, Duration: 10 hours, stops: 2
+
+DO NOT deviate from this format. DO NOT add any additional information like booking links, websites, or formatting.
 
 You can search for real flights using the search_flights function.
 Always confirm important details like dates and destinations.
@@ -724,13 +763,22 @@ DATE HANDLING:
             logger.info(f"   - Item role: {event.item.role}")
             
             if event.item.role == "assistant":
-                logger.info(f"🗣️ Agent speaking: {event.item.text_content}")
+                # Strip any markdown that might have slipped through
+                clean_text = strip_markdown(event.item.text_content)
+                logger.info(f"🗣️ Agent speaking: {clean_text}")
+                
+                # Log if markdown was detected and removed
+                if clean_text != event.item.text_content:
+                    logger.warning(f"⚠️ Markdown detected and removed from agent response")
+                    logger.debug(f"Original: {event.item.text_content}")
+                    logger.debug(f"Cleaned: {clean_text}")
+                
                 # Send to data channel for chat UI
                 try:
                     data = json.dumps({
                         "type": "transcription", 
                         "speaker": "assistant",
-                        "text": event.item.text_content
+                        "text": clean_text  # Use cleaned text
                     }).encode('utf-8')
                     asyncio.create_task(ctx.room.local_participant.publish_data(data, reliable=True))
                     logger.info(f"✅ Sent agent transcription to data channel")
