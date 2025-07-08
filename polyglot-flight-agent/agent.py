@@ -659,6 +659,19 @@ DATE HANDLING:
                 logger.error(f"❌ Function call event error: {e}")
                 logger.info(f"🔧 Raw function call event: {event}")
         
+        # Enhanced event monitoring for debugging text injection
+        @session.on("function_tools_executed")
+        def on_function_tools_executed(event):
+            """Monitor when tools are executed"""
+            try:
+                logger.info(f"🛠️ FUNCTION TOOLS EXECUTED")
+                for call_info, result in event.called_functions.zipped():
+                    logger.info(f"   - Tool: {call_info.name}")
+                    logger.info(f"   - Arguments: {call_info.arguments}")
+                    logger.info(f"   - Result: {result}")
+            except Exception as e:
+                logger.error(f"❌ Error in function_tools_executed handler: {e}")
+        
         # Add handler for user speech transcriptions (v1.0.23)
         @session.on("user_input_transcribed")
         def on_user_input_transcribed(event):
@@ -879,29 +892,73 @@ DATE HANDLING:
             logger.info(f"   - Found participant: {participant.identity}")
             on_participant_connected(participant)  # Call sync function directly
         
+        # Test Harness for text injection testing
+        class TestHarness:
+            def __init__(self, session: AgentSession):
+                self.session = session
+                self.test_cases = []
+                self.tools_executed = []
+                
+            async def add_test(self, input_text: str, expected_tool: str = None):
+                """Add a test case with expected behavior"""
+                self.test_cases.append({
+                    "input": input_text,
+                    "expected_tool": expected_tool
+                })
+            
+            async def run_tests(self):
+                """Execute all test cases"""
+                logger.info("🧪 STARTING TEST HARNESS")
+                logger.info(f"🧪 Running {len(self.test_cases)} tests")
+                
+                for i, test in enumerate(self.test_cases):
+                    logger.info(f"\n🧪 Test {i+1}: {test['input']}")
+                    
+                    # Clear any existing state
+                    self.session.interrupt()
+                    await asyncio.sleep(0.5)
+                    
+                    # Reset tools tracking
+                    self.tools_executed = []
+                    
+                    # Track tool executions
+                    @self.session.on("function_tools_executed")
+                    def track_tools(event):
+                        for call_info, _ in event.called_functions.zipped():
+                            self.tools_executed.append(call_info.name)
+                    
+                    # Inject test input
+                    speech_handle = await self.session.generate_reply(
+                        user_input=test["input"]
+                    )
+                    
+                    # Wait for completion
+                    await speech_handle.wait_for_completion()
+                    
+                    # Verify expected behavior
+                    if test["expected_tool"]:
+                        if test["expected_tool"] in self.tools_executed:
+                            logger.info(f"✅ Test passed - {test['expected_tool']} was called")
+                        else:
+                            logger.error(f"❌ Test failed - Expected {test['expected_tool']}, got {self.tools_executed}")
+                    else:
+                        logger.info(f"✅ Test completed - Tools executed: {self.tools_executed}")
+                    
+                    # Wait between tests
+                    await asyncio.sleep(2.0)
+                
+                logger.info("\n🧪 TEST HARNESS COMPLETE")
+        
+        # Create test harness instance for this session
+        test_harness = TestHarness(session)
+        
         # Add data channel handler for test mode
         @ctx.room.on("data_received")
         def on_data_received(packet):
-            """Handle text input for testing without microphone
+            """Handle text input for testing without microphone using session.generate_reply()
             
-            PACKET STRUCTURE (based on debug logs):
-            - Type: DataPacket object from LiveKit SDK
-            - Attributes:
-                - packet.data: bytes - The actual data payload (JSON encoded)
-                - packet.participant: rtc.RemoteParticipant - Who sent the data
-                - packet.kind: int - 1 for reliable data, 0 for lossy
-                - packet.topic: str - Optional topic/channel name (usually empty)
-                
-            Example packet.__dict__:
-            {
-                'data': b'{"type":"test_user_input","text":"Find flights...","timestamp":1751989620341}',
-                'kind': 1,
-                'participant': rtc.RemoteParticipant(sid=PA_xxx, identity=test-user-xxx, name=test-user-xxx),
-                'topic': ''
-            }
-            
-            IMPORTANT: The event passes a single DataPacket object, NOT separate (data, participant) args!
-            This is why we were getting "missing 1 required positional argument" errors before.
+            This handler uses the official generate_reply() method to inject text directly
+            into the STT-LLM-TTS pipeline, maintaining full conversation context and tool functionality.
             """
             # Extract data and participant from the DataPacket object
             data = packet.data  # bytes containing the JSON payload
@@ -915,25 +972,14 @@ DATE HANDLING:
                     participant_id = participant.identity if participant else "unknown"
                     logger.info(f"🧪 TEST INPUT received from {participant_id}: {text}")
                     
-                    # Create a simulated user message event that the agent will process
-                    # This mimics what happens when the STT provides transcribed text
-                    async def process_test_input():
+                    async def inject_text_input():
                         try:
-                            # The agent's voice pipeline expects user input through STT events
-                            # We'll directly trigger the agent to respond to this text
-                            logger.info(f"🧪 Processing test input: {text}")
+                            logger.info(f"🧪 Using session.generate_reply() to inject text: {text}")
                             
-                            # For STT-LLM-TTS pipeline, we need to trigger the agent
-                            # to process the text as if it came from voice
+                            # Interrupt any ongoing speech
+                            session.interrupt()
                             
-                            logger.info("🧪 Triggering agent to process text...")
-                            
-                            # The session.say() method makes the agent speak
-                            # We need to manually trigger the agent's LLM to process user input
-                            # Since we're using the STT-LLM-TTS pipeline, we can directly
-                            # call the agent's method to process the text
-                            
-                            # Send transcription to data channel first
+                            # Send transcription to data channel for UI display
                             try:
                                 trans_data = json.dumps({
                                     "type": "transcription",
@@ -945,27 +991,50 @@ DATE HANDLING:
                             except Exception as e:
                                 logger.error(f"Error sending transcription: {e}")
                             
-                            # WORKAROUND: Since we can't directly inject text into the STT-LLM-TTS pipeline,
-                            # we'll make the agent respond directly to the query
-                            # 
-                            # The agent has the flight search instructions and tools
-                            # We'll format a response that includes processing the user's request
+                            # Inject text as if user spoke it using the official method
+                            speech_handle = await session.generate_reply(
+                                user_input=text,
+                                allow_interruptions=True
+                            )
                             
-                            logger.info("🧪 Processing flight search request...")
+                            logger.info("🧪 Text injected into pipeline, waiting for completion...")
                             
-                            # Build a response that acknowledges the request and searches for flights
-                            acknowledgment = f"I'll help you find {text}"
+                            # Wait for agent to complete response
+                            await speech_handle.wait_for_completion()
                             
-                            # Make the agent speak this acknowledgment
-                            # This will trigger the agent to process the request
-                            await session.say(acknowledgment, allow_interruptions=True)
-                            
-                            logger.info("🧪 Agent acknowledged test input")
+                            logger.info("🧪 Agent response completed")
                             
                         except Exception as e:
-                            logger.error(f"❌ Error processing test input: {e}")
+                            logger.error(f"❌ Error injecting text input: {e}")
+                            # Fallback error message
+                            session.say("I'm having trouble processing that request. Please try again.", 
+                                       allow_interruptions=True)
                     
-                    asyncio.create_task(process_test_input())
+                    asyncio.create_task(inject_text_input())
+                
+                # Check for test harness commands
+                elif message.get('type') == 'run_test_harness':
+                    logger.info("🧪 Running automated test harness")
+                    
+                    async def run_automated_tests():
+                        # Add test cases
+                        await test_harness.add_test(
+                            "Find flights from New York to London", 
+                            expected_tool="search_flights"
+                        )
+                        await test_harness.add_test(
+                            "What about morning flights only?",
+                            expected_tool="search_flights"
+                        )
+                        await test_harness.add_test(
+                            "Show me business class options",
+                            expected_tool="search_flights"
+                        )
+                        
+                        # Run all tests
+                        await test_harness.run_tests()
+                    
+                    asyncio.create_task(run_automated_tests())
                     
             except Exception as e:
                 logger.debug(f"Data received (not test input): {e}")
