@@ -64,7 +64,7 @@ case $COMMAND in
         echo ""
         echo "🌐 Access Points:"
         echo "================"
-        echo "📱 Test UI (Dev): http://localhost:8080/polyglot-flight-agent/test-flight-ui-dev.html"
+        echo "📱 Test UI: http://localhost:8080/polyglot-flight-agent/test-flight-ui.html"
         echo "💬 Chat UI: http://localhost:8080/web-app/livekit-voice-chat.html"
         echo "📚 API Docs: http://localhost:8000/docs"
         echo ""

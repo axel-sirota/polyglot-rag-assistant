@@ -213,7 +213,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>✈️ Flight Search Test Interface</h1>
+        <h1>✈️ Flight Search Test Interface <span id="envBadge" style="display: none; font-size: 16px; padding: 4px 12px; border-radius: 20px; margin-left: 10px;"></span></h1>
         <p class="subtitle">Test flight searches without microphone - Perfect for noisy environments!</p>
         
         <div class="info-box">
@@ -340,8 +340,19 @@
                 updateStatus('Connecting...', 'connecting');
                 log('Requesting connection token...', 'system');
                 
-                // Get token from ECS API directly (same endpoint Vercel proxies to)
-                const response = await fetch('http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com/api/livekit/token', {
+                // Determine API URL based on environment
+                const isProduction = window.location.hostname !== 'localhost' && 
+                                   window.location.hostname !== '127.0.0.1' &&
+                                   !window.location.hostname.includes('192.168');
+                
+                const apiUrl = isProduction 
+                    ? 'http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com/api/livekit/token'
+                    : 'http://localhost:8000/api/livekit/token';
+                
+                log(`Using ${isProduction ? 'production' : 'development'} API: ${apiUrl}`, 'system');
+                
+                // Get token from API
+                const response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -365,9 +376,11 @@
                 
                 // Check if URL is in the response
                 if (!data.url) {
-                    // Use the LiveKit Cloud URL directly if not provided
-                    data.url = 'wss://polyglot-rag-assistant-3l6xagej.livekit.cloud';
-                    log('Using default LiveKit URL', 'system');
+                    // Use the appropriate LiveKit URL based on environment
+                    data.url = isProduction 
+                        ? 'wss://polyglot-rag-assistant-3l6xagej.livekit.cloud'
+                        : 'wss://polyglot-rag-dev-qieglig5.livekit.cloud';
+                    log(`Using ${isProduction ? 'production' : 'development'} LiveKit URL`, 'system');
                 }
                 
                 // Create room
@@ -547,6 +560,21 @@
         
         // Initial UI state
         updateUI();
+        
+        // Show environment badge
+        window.addEventListener('DOMContentLoaded', () => {
+            const isProduction = window.location.hostname !== 'localhost' && 
+                               window.location.hostname !== '127.0.0.1' &&
+                               !window.location.hostname.includes('192.168');
+            
+            const envBadge = document.getElementById('envBadge');
+            if (!isProduction) {
+                envBadge.style.display = 'inline-block';
+                envBadge.style.backgroundColor = '#28a745';
+                envBadge.style.color = 'white';
+                envBadge.textContent = 'DEVELOPMENT';
+            }
+        });
     </script>
 </body>
 </html>
