@@ -15,9 +15,14 @@ if [ ! -f .env.dev ]; then
     exit 1
 fi
 
+# Load environment variables from .env.dev
+echo "📋 Loading environment from .env.dev..."
+set -a  # automatically export all variables
+source .env.dev
+set +a  # turn off automatic export
+
 # Show which environment we're using
-echo "🟢 Using DEVELOPMENT environment (.env.dev)"
-LIVEKIT_URL=$(grep LIVEKIT_URL .env.dev | cut -d '=' -f2)
+echo "🟢 Using DEVELOPMENT environment"
 echo "🔗 LiveKit URL: $LIVEKIT_URL"
 echo ""
 

@@ -9,11 +9,20 @@ services:
     container_name: polyglot-api-dev
     ports:
       - "8000:8000"
-    env_file:
-      - .env.dev
     environment:
       - HOST=0.0.0.0
       - PORT=8000
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SERPAPI_API_KEY=${SERPAPI_API_KEY}
+      - SERPER_API_KEY=${SERPER_API_KEY}
+      - AVIATIONSTACK_API_KEY=${AVIATIONSTACK_API_KEY}
+      - AMADEUS_CLIENT_ID=${AMADEUS_CLIENT_ID}
+      - AMADEUS_CLIENT_SECRET=${AMADEUS_CLIENT_SECRET}
+      - AMADEUS_BASE_URL=${AMADEUS_BASE_URL}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -30,10 +39,16 @@ services:
     container_name: polyglot-agent-dev
     ports:
       - "8082:8082"
-    env_file:
-      - .env.dev
     environment:
       - API_SERVER_URL=http://api:8000
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      - CARTESIA_API_KEY=${CARTESIA_API_KEY}
+      - AMADEUS_CLIENT_ID=${AMADEUS_CLIENT_ID}
+      - AMADEUS_CLIENT_SECRET=${AMADEUS_CLIENT_SECRET}
     depends_on:
       - api
     networks:
@@ -49,8 +64,8 @@ services:
       - ./web-app:/app/web-app:ro
     ports:
       - "8080:8080"
-    env_file:
-      - .env.dev
+    environment:
+      - LIVEKIT_URL=${LIVEKIT_URL}
     command: >
       bash -c "
         echo '🌐 Starting Web UI server on port 8080...' &&
