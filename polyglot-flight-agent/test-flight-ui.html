@@ -423,7 +423,7 @@
                             }
                         } else if (data.type === 'pre_speech_text') {
                             // Handle pre-speech text to show text before audio plays
-                            log(`[Pre-speech] ${data.text}`, 'assistant');
+                            log(data.text, 'assistant');
                             
                             // Send confirmation back if speech_id is present
                             if (data.speech_id && room.localParticipant) {

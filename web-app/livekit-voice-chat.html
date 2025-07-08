@@ -1315,12 +1315,23 @@
                 // Get selected language
                 const selectedLanguage = document.getElementById('languageSelect').value;
                 
-                // Create language-specific room name
-                const roomName = `flight-demo-${selectedLanguage}`;
+                // Determine API URL based on environment
+                const isLocalDev = window.location.hostname === 'localhost' || 
+                                  window.location.hostname === '127.0.0.1' ||
+                                  window.location.hostname.includes('192.168');
+                
+                // Create room name - no language suffix in dev to match agent
+                const roomName = isLocalDev ? 'flight-demo' : `flight-demo-${selectedLanguage}`;
                 console.log('Connecting to room:', roomName);
                 
+                const tokenUrl = isLocalDev 
+                    ? 'http://localhost:8000/api/livekit/token'
+                    : '/api/livekit-token';
+                
+                console.log(`Using ${isLocalDev ? 'local dev' : 'production'} token endpoint:`, tokenUrl);
+                
                 // Get a token from our backend
-                const response = await fetch('/api/livekit-token', {
+                const response = await fetch(tokenUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1592,58 +1603,9 @@
             }
         });
 
-        // Test function to verify messages are working
-        function testMessages() {
-            console.log('Testing message display...');
-            
-            // Test user message
-            chatUI.addMessage("Hello, I need a flight from New York to London", 'user');
-            
-            // Test assistant message
-            setTimeout(() => {
-                chatUI.addMessage("I'd be happy to help you find flights from New York to London. Let me search for available options.", 'assistant');
-            }, 1000);
-            
-            // Test flight results
-            setTimeout(() => {
-                const testFlights = [
-                    {
-                        airline: 'Delta Airlines',
-                        flightNumber: 'DL 234',
-                        departure: '9:30 AM',
-                        arrival: '9:45 PM',
-                        duration: '7h 15m',
-                        stops: 'Nonstop',
-                        aircraft: 'Boeing 777',
-                        price: 689
-                    },
-                    {
-                        airline: 'British Airways',
-                        flightNumber: 'BA 112',
-                        departure: '5:15 PM',
-                        arrival: '6:30 AM+1',
-                        duration: '7h 15m',
-                        stops: 'Nonstop',
-                        aircraft: 'Airbus A380',
-                        price: 724
-                    }
-                ];
-                
-                const flightData = {
-                    type: 'flight_results',
-                    flights: testFlights
-                };
-                
-                chatUI.addMessage("I found 2 nonstop flights for you:", 'assistant', flightData);
-            }, 2000);
-        }
-
-        // Initialize and test after DOM is loaded
+        // Initialize after DOM is loaded
         document.addEventListener('DOMContentLoaded', () => {
             window.chatUI = new ChatUIManager();
-            
-            // Uncomment to test messages
-            // setTimeout(testMessages, 1000);
         });
     </script>
 </body>
