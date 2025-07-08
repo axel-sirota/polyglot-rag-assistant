@@ -413,10 +413,32 @@
                 room.on('dataReceived', (payload, participant) => {
                     try {
                         const data = JSON.parse(new TextDecoder().decode(payload));
+                        console.log('Data received:', data);
+                        
                         if (data.type === 'transcription' || data.type === 'transcript') {
                             if (data.speaker === 'assistant') {
                                 log(data.text, 'assistant');
+                            } else if (data.speaker === 'user') {
+                                log(data.text, 'user');
                             }
+                        } else if (data.type === 'pre_speech_text') {
+                            // Handle pre-speech text to show text before audio plays
+                            log(`[Pre-speech] ${data.text}`, 'assistant');
+                            
+                            // Send confirmation back if speech_id is present
+                            if (data.speech_id && room.localParticipant) {
+                                const confirmation = {
+                                    type: 'text_displayed',
+                                    speech_id: data.speech_id
+                                };
+                                room.localParticipant.publishData(
+                                    new TextEncoder().encode(JSON.stringify(confirmation)),
+                                    { reliable: true }
+                                );
+                                console.log('Sent text display confirmation for', data.speech_id);
+                            }
+                        } else if (data.type === 'speech_starting') {
+                            console.log('Speech starting:', data.speech_id);
                         }
                     } catch (e) {
                         console.error('Error parsing data:', e);

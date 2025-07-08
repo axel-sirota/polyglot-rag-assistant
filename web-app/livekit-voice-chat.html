@@ -1414,6 +1414,29 @@
                         chatUI.hideTypingIndicator();
                         chatUI.addMessage(parsedData.text, 'assistant');
                         break;
+                        
+                    case 'pre_speech_text':
+                        // Handle pre-speech text to show text before audio plays
+                        console.log('Pre-speech text received:', parsedData.text);
+                        chatUI.addMessage(parsedData.text, 'assistant');
+                        
+                        // Send confirmation back if speech_id is present
+                        if (parsedData.speech_id && room.localParticipant) {
+                            const confirmation = {
+                                type: 'text_displayed',
+                                speech_id: parsedData.speech_id
+                            };
+                            room.localParticipant.publishData(
+                                new TextEncoder().encode(JSON.stringify(confirmation)),
+                                { reliable: true }
+                            );
+                            console.log('Sent text display confirmation for', parsedData.speech_id);
+                        }
+                        break;
+                        
+                    case 'speech_starting':
+                        console.log('Speech starting:', parsedData.speech_id);
+                        break;
                 }
             } catch (error) {
                 console.error('Error parsing data:', error);

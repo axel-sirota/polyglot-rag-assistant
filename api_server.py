@@ -480,7 +480,8 @@ async def get_livekit_token(request: Request):
             "identity": identity,
             "room": room_name,
             "name": name,
-            "metadata": room_metadata
+            "metadata": room_metadata,
+            "url": livekit_url  # Include the LiveKit URL in response
         }
         
         logger.info(f"✅ Token generated successfully for room: {room_name}")
