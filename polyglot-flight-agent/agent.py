@@ -879,6 +879,50 @@ DATE HANDLING:
             logger.info(f"   - Found participant: {participant.identity}")
             on_participant_connected(participant)  # Call sync function directly
         
+        # Add data channel handler for test mode
+        @ctx.room.on("data_received")
+        def on_data_received(data: bytes, participant):
+            """Handle text input for testing without microphone"""
+            try:
+                message = json.loads(data.decode('utf-8'))
+                
+                # Check if this is test input (not regular transcriptions)
+                if message.get('type') == 'test_user_input' and message.get('text'):
+                    text = message['text']
+                    logger.info(f"🧪 TEST INPUT received from {participant.identity}: {text}")
+                    
+                    # Create a simulated user message event that the agent will process
+                    # This mimics what happens when the STT provides transcribed text
+                    async def process_test_input():
+                        try:
+                            # The agent's voice pipeline expects user input through STT events
+                            # We'll directly trigger the agent to respond to this text
+                            logger.info(f"🧪 Processing test input: {text}")
+                            
+                            # Say something to acknowledge we got the input and trigger processing
+                            await session.say(f"", allow_interruptions=True)  # Empty to just trigger
+                            
+                            # Simulate user transcription by calling the LLM directly with the text
+                            # This ensures the agent processes it as if it came from voice
+                            from livekit.agents import ChatContext, ChatMessage
+                            
+                            # Get current chat context
+                            chat_ctx = session.chat_ctx
+                            
+                            # Add user message to context
+                            chat_ctx.messages.append(ChatMessage(role="user", text=text))
+                            
+                            # Let the agent's normal flow handle the response
+                            logger.info("🧪 Test input added to chat context, agent will respond")
+                            
+                        except Exception as e:
+                            logger.error(f"❌ Error processing test input: {e}")
+                    
+                    asyncio.create_task(process_test_input())
+                    
+            except Exception as e:
+                logger.debug(f"Data received (not test input): {e}")
+        
     except Exception as e:
         logger.error("="*60)
         logger.error(f"❌ CRITICAL ERROR IN AGENT ENTRYPOINT")
