@@ -2,87 +2,140 @@
 
 ## Overview
 
-We now have separate LiveKit projects for development and production:
+We have a complete Docker-based development environment that's isolated from production:
 
-- **Production**: `polyglot-rag-assistant` (wss://polyglot-rag-assistant-3l6xagej.livekit.cloud)
-- **Development**: `polyglot-rag-dev` (wss://polyglot-rag-dev-qieglig5.livekit.cloud)
-
-This separation ensures safe testing without affecting production users.
+- **Production**: Uses `.env` and production LiveKit project
+- **Development**: Uses `.env.dev` and dedicated dev LiveKit project
 
 ## Quick Start
 
-### 1. Test Agent Locally
+### Start Development Environment
 
 ```bash
-cd polyglot-flight-agent
-./run-dev.sh
+./docker-dev.sh up
 ```
 
-This will:
-- Load `.env.dev` automatically
-- Show "🟢 ENVIRONMENT: DEVELOPMENT" in logs
-- Connect to the dev LiveKit project
+This starts:
+- **API Server** on http://localhost:8000
+- **LiveKit Agent** on port 8082
+- **Web UI Server** on http://localhost:8080
 
-### 2. Test with Docker
+### Access Points
+
+- **Test UI**: http://localhost:8080/polyglot-flight-agent/test-flight-ui.html
+- **Chat UI**: http://localhost:8080/web-app/livekit-voice-chat.html
+- **API Docs**: http://localhost:8000/docs
+
+### View Logs
 
 ```bash
-# Run with dev environment (default)
-./run-docker.sh
+# All services
+./docker-dev.sh logs
 
-# Run with prod environment (be careful!)
-./run-docker.sh prod
+# Specific service
+./docker-dev.sh logs api
+./docker-dev.sh logs agent
 ```
 
-### 3. Test Web UI
+### Stop Everything
 
 ```bash
-cd polyglot-flight-agent
-./serve-test-ui.sh
+./docker-dev.sh down
 ```
 
-Then open http://localhost:8080/test-flight-ui.html
+## Architecture
 
-## Environment Files
+```
+docker-compose.dev.yml
+├── api (API Server)
+│   ├── Port: 8000
+│   ├── Uses: .env.dev
+│   └── Network: polyglot-dev
+│
+├── agent (LiveKit Agent)
+│   ├── Port: 8082
+│   ├── Uses: .env.dev
+│   ├── API_SERVER_URL: http://api:8000 (internal)
+│   └── Network: polyglot-dev
+│
+└── web-ui (Static file server)
+    ├── Port: 8080
+    ├── Serves: test UI and chat UI
+    └── Network: polyglot-dev
+```
 
-- `.env` - Production credentials (don't modify unless deploying)
-- `.env.dev` - Development credentials (safe for testing)
+## Key Features
 
-## How It Works
+1. **Complete Isolation**: Dev LiveKit project (polyglot-rag-dev) is completely separate from production
+2. **Single Command**: `./docker-dev.sh up` starts everything
+3. **Proper Networking**: Services communicate internally via Docker network
+4. **Environment Variables**: All loaded from `.env.dev`
+5. **Hot Reload**: Code changes reflected after container restart
 
-1. Scripts detect which environment to use
-2. Dev environment uses separate LiveKit project
-3. Agent logs show which environment is active
-4. No risk of affecting production during testing
+## Testing Text-Audio Synchronization
 
-## Testing the Text-Audio Synchronization
-
-1. Start the agent with dev environment:
+1. Start the dev environment:
    ```bash
-   cd polyglot-flight-agent
-   ./run-dev.sh
+   ./docker-dev.sh up
    ```
 
-2. Look for these key logs:
-   - "🟢 ENVIRONMENT: DEVELOPMENT"
-   - "🔄 Creating synchronized speech controller"
-   - "📤 Sent pre-speech text to data channel"
+2. Check agent logs for environment confirmation:
+   ```bash
+   ./docker-dev.sh logs agent | grep ENVIRONMENT
+   ```
+   Should show: "🟢 ENVIRONMENT: DEVELOPMENT"
 
-3. Connect via web UI and verify:
-   - Greeting text appears before audio
-   - No production users are affected
+3. Open test UI: http://localhost:8080/polyglot-flight-agent/test-flight-ui.html
 
-## Safety Features
+4. Connect and observe:
+   - Text should appear ~500ms before audio
+   - Check logs for "Sent pre-speech text to data channel"
 
-- Dev environment clearly labeled in logs
-- Different LiveKit URL prevents accidental production access
-- `.env.dev` is gitignored to prevent credential leaks
-- Default to dev environment for local testing
+## Available Commands
+
+```bash
+./docker-dev.sh up       # Start all services
+./docker-dev.sh down     # Stop all services
+./docker-dev.sh logs     # View all logs
+./docker-dev.sh restart  # Restart services
+./docker-dev.sh ps       # Show service status
+./docker-dev.sh build    # Rebuild images
+```
+
+## Environment Variables
+
+The `.env.dev` file contains:
+- Dev LiveKit credentials
+- Local API server URL
+- All necessary API keys
+
+**Note**: The agent container uses `http://api:8000` internally to reach the API server, while browsers use `http://localhost:8000`.
 
 ## Troubleshooting
 
-If you see "🔴 ENVIRONMENT: PRODUCTION", stop immediately and check:
-- Which script you're running
-- Which .env file is being loaded
-- The LIVEKIT_URL value
+### Services not starting?
+```bash
+# Check status
+./docker-dev.sh ps
 
-Always verify you see "🟢 ENVIRONMENT: DEVELOPMENT" before testing!
+# View logs
+./docker-dev.sh logs
+```
+
+### Need to rebuild?
+```bash
+./docker-dev.sh down
+./docker-dev.sh build
+./docker-dev.sh up
+```
+
+### Port conflicts?
+Make sure ports 8000, 8080, and 8082 are not in use by other services.
+
+## Production Deployment
+
+When ready for production:
+1. Test thoroughly in dev environment
+2. Use separate deployment scripts for production
+3. Never use `.env.dev` in production
+4. Always verify you're deploying the right environment
