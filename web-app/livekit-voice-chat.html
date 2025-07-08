@@ -1197,21 +1197,11 @@
         const LIVEKIT_URL = 'wss://polyglot-rag-assistant-3l6xagej.livekit.cloud';
         let room;
         let chatUI;
+        let expectedMessageSequence = 1;
+        let messageBuffer = new Map();
 
         async function initializeLiveKit() {
             chatUI = new ChatUIManager();
-            
-            // Test the chat UI is working
-            console.log('Chat UI initialized, testing messages...');
-            setTimeout(() => {
-                chatUI.addMessage('Test: User message appearance', 'user');
-                setTimeout(() => {
-                    chatUI.addMessage('Test: Assistant message appearance', 'assistant');
-                    setTimeout(() => {
-                        chatUI.addMessage('Test: System message', 'system');
-                    }, 500);
-                }, 500);
-            }, 1000);
 
             // Initialize room
             room = new LivekitClient.Room({
@@ -1370,6 +1360,9 @@
             if (room) {
                 await room.disconnect();
             }
+            // Reset sequence tracking
+            expectedMessageSequence = 1;
+            messageBuffer.clear();
         }
 
         function handleConnected() {
@@ -1427,22 +1420,8 @@
                         break;
                         
                     case 'pre_speech_text':
-                        // Handle pre-speech text to show text before audio plays
-                        console.log('Pre-speech text received:', parsedData.text);
-                        chatUI.addMessage(parsedData.text, 'assistant');
-                        
-                        // Send confirmation back if speech_id is present
-                        if (parsedData.speech_id && room.localParticipant) {
-                            const confirmation = {
-                                type: 'text_displayed',
-                                speech_id: parsedData.speech_id
-                            };
-                            room.localParticipant.publishData(
-                                new TextEncoder().encode(JSON.stringify(confirmation)),
-                                { reliable: true }
-                            );
-                            console.log('Sent text display confirmation for', parsedData.speech_id);
-                        }
+                        // Handle pre-speech text with sequence ordering
+                        handleSequencedMessage(parsedData);
                         break;
                         
                     case 'speech_starting':
@@ -1492,6 +1471,53 @@
             if (transcription.final) {
                 const sender = participant.identity === room.localParticipant?.identity ? 'user' : 'assistant';
                 chatUI.addMessage(transcription.text, sender);
+            }
+        }
+        
+        async function handleSequencedMessage(data) {
+            // If no sequence number, process immediately (backward compatibility)
+            if (!data.sequence) {
+                processPreSpeechText(data);
+                return;
+            }
+            
+            // Handle sequenced messages to prevent race conditions
+            if (data.sequence === expectedMessageSequence) {
+                // Process this message
+                processPreSpeechText(data);
+                expectedMessageSequence++;
+                
+                // Process any buffered subsequent messages
+                while (messageBuffer.has(expectedMessageSequence)) {
+                    const buffered = messageBuffer.get(expectedMessageSequence);
+                    messageBuffer.delete(expectedMessageSequence);
+                    processPreSpeechText(buffered);
+                    expectedMessageSequence++;
+                }
+            } else if (data.sequence > expectedMessageSequence) {
+                // Buffer out-of-order message
+                messageBuffer.set(data.sequence, data);
+                console.log(`Buffered message ${data.sequence}, waiting for ${expectedMessageSequence}`);
+            }
+            // Ignore messages with sequence < expected (duplicates or old messages)
+        }
+        
+        function processPreSpeechText(data) {
+            // Display the text immediately
+            console.log('Pre-speech text received:', data.text);
+            chatUI.addMessage(data.text, 'assistant');
+            
+            // Send confirmation back if speech_id is present
+            if (data.speech_id && room.localParticipant) {
+                const confirmation = {
+                    type: 'text_displayed',
+                    speech_id: data.speech_id
+                };
+                room.localParticipant.publishData(
+                    new TextEncoder().encode(JSON.stringify(confirmation)),
+                    { reliable: true }
+                );
+                console.log('Sent text display confirmation for', data.speech_id);
             }
         }
 

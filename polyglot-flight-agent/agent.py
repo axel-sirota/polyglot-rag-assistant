@@ -76,41 +76,49 @@ class SynchronizedSpeechController:
         self.pending_speeches = asyncio.Queue()
         self.text_display_confirmations = {}
         self.default_delay = 0.5  # Default delay before audio if no confirmation
+        self.message_sequence = 0  # Track message sequence for ordering
+        self.min_text_render_delay = 0.2  # Minimum 200ms for text to render
         
     async def synchronized_say(self, text: str, allow_interruptions: bool = True) -> Any:
         """Send text first, then play audio with proper synchronization"""
-        speech_id = f"speech_{time.time()}"
+        self.message_sequence += 1
+        speech_id = f"speech_{self.message_sequence}_{time.time()}"
         
-        # Send text to data channel immediately
+        # Send text to data channel immediately with sequence number
         try:
             data = json.dumps({
                 "type": "pre_speech_text",
                 "speaker": "assistant",
                 "text": text,
-                "speech_id": speech_id
+                "speech_id": speech_id,
+                "sequence": self.message_sequence  # Add sequence for message ordering
             }).encode('utf-8')
             await self.room.local_participant.publish_data(data, reliable=True)
-            logger.info(f"📤 Sent pre-speech text to data channel (ID: {speech_id})")
+            logger.info(f"📤 Sent pre-speech text to data channel (ID: {speech_id}, seq: {self.message_sequence})")
         except Exception as e:
             logger.error(f"Error sending pre-speech text: {e}")
         
-        # Wait for confirmation or timeout
+        # ALWAYS wait minimum time for text to render in UI
+        await asyncio.sleep(self.min_text_render_delay)
+        logger.info(f"⏱️ Waited {self.min_text_render_delay}s for text rendering")
+        
+        # Then wait for confirmation or additional timeout
         confirmation_received = False
         try:
-            # Wait up to 500ms for confirmation
+            # Wait up to 300ms more for confirmation
             await asyncio.wait_for(
                 self._wait_for_confirmation(speech_id),
-                timeout=0.5
+                timeout=0.3
             )
             confirmation_received = True
             logger.info(f"✅ Text display confirmed for speech {speech_id}")
         except asyncio.TimeoutError:
-            # No confirmation, use default delay
-            logger.info(f"⏱️ No text display confirmation, using default delay")
+            # No confirmation received, add safety delay
+            logger.info(f"⏱️ No text display confirmation, adding {self.default_delay}s safety delay")
             await asyncio.sleep(self.default_delay)
         
-        # Now generate and play TTS
-        logger.info(f"🎵 Starting TTS playback for speech {speech_id}")
+        # Now generate and play TTS - text has definitely been displayed
+        logger.info(f"🎵 Starting TTS playback for speech {speech_id} after total delay")
         handle = self.session.say(text, allow_interruptions=allow_interruptions)
         return handle
     

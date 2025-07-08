@@ -293,6 +293,8 @@
         let room;
         let connected = false;
         let localParticipant;
+        let expectedMessageSequence = 1;
+        let messageBuffer = new Map();
         
         // Test queries
         const testQueries = {
@@ -333,6 +335,55 @@
             const chatLog = document.getElementById('chatLog');
             chatLog.innerHTML = '';
             log('Chat cleared', 'system');
+            // Reset sequence tracking
+            expectedMessageSequence = 1;
+            messageBuffer.clear();
+        }
+        
+        async function handleSequencedMessage(data) {
+            // If no sequence number, process immediately (backward compatibility)
+            if (!data.sequence) {
+                processPreSpeechText(data);
+                return;
+            }
+            
+            // Handle sequenced messages to prevent race conditions
+            if (data.sequence === expectedMessageSequence) {
+                // Process this message
+                processPreSpeechText(data);
+                expectedMessageSequence++;
+                
+                // Process any buffered subsequent messages
+                while (messageBuffer.has(expectedMessageSequence)) {
+                    const buffered = messageBuffer.get(expectedMessageSequence);
+                    messageBuffer.delete(expectedMessageSequence);
+                    processPreSpeechText(buffered);
+                    expectedMessageSequence++;
+                }
+            } else if (data.sequence > expectedMessageSequence) {
+                // Buffer out-of-order message
+                messageBuffer.set(data.sequence, data);
+                console.log(`Buffered message ${data.sequence}, waiting for ${expectedMessageSequence}`);
+            }
+            // Ignore messages with sequence < expected (duplicates or old messages)
+        }
+        
+        function processPreSpeechText(data) {
+            // Display the text immediately
+            log(data.text, 'assistant');
+            
+            // Send confirmation back if speech_id is present
+            if (data.speech_id && room.localParticipant) {
+                const confirmation = {
+                    type: 'text_displayed',
+                    speech_id: data.speech_id
+                };
+                room.localParticipant.publishData(
+                    new TextEncoder().encode(JSON.stringify(confirmation)),
+                    { reliable: true }
+                );
+                console.log('Sent text display confirmation for', data.speech_id);
+            }
         }
         
         async function connectToRoom() {
@@ -422,21 +473,8 @@
                                 log(data.text, 'user');
                             }
                         } else if (data.type === 'pre_speech_text') {
-                            // Handle pre-speech text to show text before audio plays
-                            log(data.text, 'assistant');
-                            
-                            // Send confirmation back if speech_id is present
-                            if (data.speech_id && room.localParticipant) {
-                                const confirmation = {
-                                    type: 'text_displayed',
-                                    speech_id: data.speech_id
-                                };
-                                room.localParticipant.publishData(
-                                    new TextEncoder().encode(JSON.stringify(confirmation)),
-                                    { reliable: true }
-                                );
-                                console.log('Sent text display confirmation for', data.speech_id);
-                            }
+                            // Handle pre-speech text with sequence ordering
+                            handleSequencedMessage(data);
                         } else if (data.type === 'speech_starting') {
                             console.log('Speech starting:', data.speech_id);
                         }
