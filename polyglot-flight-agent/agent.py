@@ -63,6 +63,67 @@ def strip_markdown(text: str) -> str:
 # This enables persistence across disconnections
 PARTICIPANT_SESSIONS: Dict[str, Dict] = {}
 
+# Global flag to track if we're waiting for text display confirmation
+WAITING_FOR_TEXT_DISPLAY: Dict[str, bool] = {}
+
+
+class SynchronizedSpeechController:
+    """Controls text-audio synchronization for TTS playback"""
+    
+    def __init__(self, session: AgentSession, room: rtc.Room):
+        self.session = session
+        self.room = room
+        self.pending_speeches = asyncio.Queue()
+        self.text_display_confirmations = {}
+        self.default_delay = 0.5  # Default delay before audio if no confirmation
+        
+    async def synchronized_say(self, text: str, allow_interruptions: bool = True) -> Any:
+        """Send text first, then play audio with proper synchronization"""
+        speech_id = f"speech_{time.time()}"
+        
+        # Send text to data channel immediately
+        try:
+            data = json.dumps({
+                "type": "pre_speech_text",
+                "speaker": "assistant",
+                "text": text,
+                "speech_id": speech_id
+            }).encode('utf-8')
+            await self.room.local_participant.publish_data(data, reliable=True)
+            logger.info(f"📤 Sent pre-speech text to data channel (ID: {speech_id})")
+        except Exception as e:
+            logger.error(f"Error sending pre-speech text: {e}")
+        
+        # Wait for confirmation or timeout
+        confirmation_received = False
+        try:
+            # Wait up to 500ms for confirmation
+            await asyncio.wait_for(
+                self._wait_for_confirmation(speech_id),
+                timeout=0.5
+            )
+            confirmation_received = True
+            logger.info(f"✅ Text display confirmed for speech {speech_id}")
+        except asyncio.TimeoutError:
+            # No confirmation, use default delay
+            logger.info(f"⏱️ No text display confirmation, using default delay")
+            await asyncio.sleep(self.default_delay)
+        
+        # Now generate and play TTS
+        logger.info(f"🎵 Starting TTS playback for speech {speech_id}")
+        handle = self.session.say(text, allow_interruptions=allow_interruptions)
+        return handle
+    
+    async def _wait_for_confirmation(self, speech_id: str):
+        """Wait for text display confirmation from frontend"""
+        while speech_id not in self.text_display_confirmations:
+            await asyncio.sleep(0.05)
+        return self.text_display_confirmations.pop(speech_id)
+    
+    def confirm_text_displayed(self, speech_id: str):
+        """Mark text as displayed by frontend"""
+        self.text_display_confirmations[speech_id] = True
+
 
 class FlightAPIClient:
     """Client for calling our flight search API"""
@@ -403,6 +464,18 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🔧 Process ID: {os.getpid()}")
     logger.info(f"📊 Job metadata: {ctx.job.metadata if hasattr(ctx.job, 'metadata') else 'None'}")
     logger.info(f"📊 Room metadata: {ctx.room.metadata}")
+    
+    # Log environment type
+    livekit_url = os.getenv('LIVEKIT_URL', '')
+    if 'polyglot-rag-dev' in livekit_url:
+        logger.info("🟢 ENVIRONMENT: DEVELOPMENT (polyglot-rag-dev)")
+        logger.info("🔒 Safe for testing - using dev LiveKit project")
+    elif 'polyglot-rag-assistant' in livekit_url:
+        logger.info("🔴 ENVIRONMENT: PRODUCTION (polyglot-rag-assistant)")
+        logger.info("⚠️  Be careful - this is the production environment!")
+    else:
+        logger.info(f"🟡 ENVIRONMENT: UNKNOWN - LiveKit URL: {livekit_url}")
+    
     logger.info("="*60)
     
     # Track if we've greeted participants already
@@ -797,6 +870,21 @@ DATE HANDLING:
                 handle = event.speech_handle
                 logger.info(f"   - Speech Handle type: {type(handle)}")
                 logger.info(f"   - Speech Handle attributes: {[attr for attr in dir(handle) if not attr.startswith('_')]}")
+                
+            # Send notification that speech is starting
+            async def notify_speech_starting():
+                try:
+                    speech_id = f"speech_{time.time()}"
+                    data = json.dumps({
+                        "type": "speech_starting",
+                        "speech_id": speech_id
+                    }).encode('utf-8')
+                    await ctx.room.local_participant.publish_data(data, reliable=True)
+                    logger.info(f"📢 Notified frontend that speech is starting")
+                except Exception as e:
+                    logger.error(f"Error notifying speech start: {e}")
+            
+            asyncio.create_task(notify_speech_starting())
             
         # Monitor TTS events
         @session.on("tts_started")
@@ -877,6 +965,11 @@ DATE HANDLING:
         logger.info(f"🏠 Room: {ctx.room.name}")
         logger.info(f"🌍 Language: {language}")
         
+        # Create synchronized speech controller
+        logger.info("🔄 Creating synchronized speech controller...")
+        speech_controller = SynchronizedSpeechController(session, ctx.room)
+        logger.info("✅ Speech controller initialized")
+        
         # TEST: Send a test message immediately after session start
         logger.info("📨 Sending test data message...")
         try:
@@ -912,13 +1005,15 @@ DATE HANDLING:
                     greeted_participants.add(participant.identity)
                     
                     async def send_welcome_back():
-                        await asyncio.sleep(1.5)  # Wait for audio to establish
+                        await asyncio.sleep(1.0)  # Wait for data channel to establish
                         
                         # Get language-specific welcome back message from comprehensive language config
                         message = get_welcome_back_message(language)
                         logger.info(f"🗣️ Sending welcome-back message in {language}: {message[:50]}...")
-                        session.say(message, allow_interruptions=True)
-                        logger.info("✅ Welcome-back message sent to TTS")
+                        
+                        # Use synchronized speech controller
+                        await speech_controller.synchronized_say(message, allow_interruptions=True)
+                        logger.info("✅ Welcome-back message sent with synchronization")
                     
                     asyncio.create_task(send_welcome_back())
                 else:
@@ -937,12 +1032,14 @@ DATE HANDLING:
                     greeted_participants.add(participant.identity)
                     
                     async def send_greeting():
-                        await asyncio.sleep(1.5)
+                        await asyncio.sleep(1.0)  # Wait for data channel to establish
                         
                         # Get language-specific greeting from comprehensive language config
                         greeting_message = get_greeting(language)
                         logger.info(f"🗣️ Sending greeting in {language}: {greeting_message[:50]}...")
-                        session.say(greeting_message, allow_interruptions=True)
+                        
+                        # Use synchronized speech controller
+                        await speech_controller.synchronized_say(greeting_message, allow_interruptions=True)
                     
                     asyncio.create_task(send_greeting())
         
@@ -1134,6 +1231,12 @@ DATE HANDLING:
                         await test_harness.run_tests()
                     
                     asyncio.create_task(run_automated_tests())
+                
+                # Handle text display confirmations from frontend
+                elif message.get('type') == 'text_displayed' and message.get('speech_id'):
+                    speech_id = message['speech_id']
+                    logger.info(f"✅ Frontend confirmed text display for speech {speech_id}")
+                    speech_controller.confirm_text_displayed(speech_id)
                     
             except Exception as e:
                 logger.debug(f"Data received (not test input): {e}")
