@@ -425,7 +425,11 @@
                         room: roomName,
                         identity: `test-user-${Date.now()}`,
                         name: 'Test User',
-                        metadata: JSON.stringify({ language })
+                        metadata: JSON.stringify({ language }),
+                        roomMetadata: JSON.stringify({
+                            require_agent: true,
+                            language: language
+                        })
                     })
                 });
                 
