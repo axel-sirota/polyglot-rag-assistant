@@ -637,6 +637,11 @@ DATE HANDLING:
             try:
                 # UserStateChangedEvent has old_state and new_state properties
                 logger.info(f"👤 USER STATE CHANGED: {event.old_state} -> {event.new_state}")
+                logger.info(f"📋 USER_STATE_CHANGED Event Structure:")
+                logger.info(f"   - Type: {type(event)}")
+                logger.info(f"   - Attributes: {[attr for attr in dir(event) if not attr.startswith('_')]}")
+                logger.info(f"   - Old State: {event.old_state}")
+                logger.info(f"   - New State: {event.new_state}")
             except AttributeError as e:
                 logger.error(f"❌ User state event error: {e}")
                 logger.info(f"👤 Raw user state event: {event}")
@@ -646,6 +651,9 @@ DATE HANDLING:
             try:
                 # AgentStateChangedEvent has old_state and new_state properties
                 logger.info(f"🤖 AGENT STATE CHANGED: {event.old_state} -> {event.new_state}")
+                logger.info(f"📋 AGENT_STATE_CHANGED Event Structure:")
+                logger.info(f"   - Type: {type(event)}")
+                logger.info(f"   - Attributes: {[attr for attr in dir(event) if not attr.startswith('_')]}")
             except AttributeError as e:
                 logger.error(f"❌ Agent state event error: {e}")
                 logger.info(f"🤖 Raw agent state event: {event}")
@@ -655,6 +663,11 @@ DATE HANDLING:
             try:
                 # FunctionCallEvent has function_call_id and function_name
                 logger.info(f"🔧 FUNCTION CALLED: {event.function_name} (ID: {event.function_call_id})")
+                logger.info(f"📋 FUNCTION_CALL Event Structure:")
+                logger.info(f"   - Type: {type(event)}")
+                logger.info(f"   - Attributes: {[attr for attr in dir(event) if not attr.startswith('_')]}")
+                if hasattr(event, 'arguments'):
+                    logger.info(f"   - Arguments: {event.arguments}")
             except AttributeError as e:
                 logger.error(f"❌ Function call event error: {e}")
                 logger.info(f"🔧 Raw function call event: {event}")
@@ -665,10 +678,21 @@ DATE HANDLING:
             """Monitor when tools are executed"""
             try:
                 logger.info(f"🛠️ FUNCTION TOOLS EXECUTED")
-                for call_info, result in event.called_functions.zipped():
-                    logger.info(f"   - Tool: {call_info.name}")
-                    logger.info(f"   - Arguments: {call_info.arguments}")
-                    logger.info(f"   - Result: {result}")
+                # Debug the event structure
+                logger.info(f"   Event type: {type(event)}")
+                logger.info(f"   Event attributes: {[attr for attr in dir(event) if not attr.startswith('_')]}")
+                
+                # Try different ways to access the data
+                if hasattr(event, 'tool_calls'):
+                    for tool_call in event.tool_calls:
+                        logger.info(f"   - Tool: {tool_call.tool_name}")
+                        logger.info(f"   - Result: {tool_call.result}")
+                elif hasattr(event, 'called_functions'):
+                    for call_info, result in event.called_functions:
+                        logger.info(f"   - Tool: {call_info.name}")
+                        logger.info(f"   - Result: {result}")
+                else:
+                    logger.info(f"   Raw event: {event}")
             except Exception as e:
                 logger.error(f"❌ Error in function_tools_executed handler: {e}")
         
@@ -692,6 +716,13 @@ DATE HANDLING:
         # Add handler for conversation items (agent responses) - v1.0.23
         @session.on("conversation_item_added") 
         def on_conversation_item_added(event):
+            logger.info(f"📋 CONVERSATION_ITEM_ADDED Event Structure:")
+            logger.info(f"   - Type: {type(event)}")
+            logger.info(f"   - Attributes: {[attr for attr in dir(event) if not attr.startswith('_')]}")
+            logger.info(f"   - Item type: {type(event.item)}")
+            logger.info(f"   - Item attributes: {[attr for attr in dir(event.item) if not attr.startswith('_')]}")
+            logger.info(f"   - Item role: {event.item.role}")
+            
             if event.item.role == "assistant":
                 logger.info(f"🗣️ Agent speaking: {event.item.text_content}")
                 # Send to data channel for chat UI
@@ -711,6 +742,13 @@ DATE HANDLING:
         @session.on("speech_created")
         def on_speech_created(event):
             logger.info(f"🎵 Speech created - Audio channel active: {event}")
+            logger.info(f"📋 SPEECH_CREATED Event Structure:")
+            logger.info(f"   - Type: {type(event)}")
+            logger.info(f"   - Attributes: {[attr for attr in dir(event) if not attr.startswith('_')]}")
+            if hasattr(event, 'speech_handle'):
+                handle = event.speech_handle
+                logger.info(f"   - Speech Handle type: {type(handle)}")
+                logger.info(f"   - Speech Handle attributes: {[attr for attr in dir(handle) if not attr.startswith('_')]}")
             
         # Monitor TTS events
         @session.on("tts_started")
@@ -924,8 +962,8 @@ DATE HANDLING:
                     # Track tool executions
                     @self.session.on("function_tools_executed")
                     def track_tools(event):
-                        for call_info, _ in event.called_functions.zipped():
-                            self.tools_executed.append(call_info.name)
+                        for tool_call in event.tool_calls:
+                            self.tools_executed.append(tool_call.tool_name)
                     
                     # Inject test input
                     speech_handle = await self.session.generate_reply(
@@ -933,7 +971,7 @@ DATE HANDLING:
                     )
                     
                     # Wait for completion
-                    await speech_handle.wait_for_completion()
+                    await speech_handle.wait_for_playout()
                     
                     # Verify expected behavior
                     if test["expected_tool"]:
@@ -960,9 +998,22 @@ DATE HANDLING:
             This handler uses the official generate_reply() method to inject text directly
             into the STT-LLM-TTS pipeline, maintaining full conversation context and tool functionality.
             """
+            # Log packet structure for documentation
+            logger.info(f"📦 DATA_RECEIVED Packet Structure:")
+            logger.info(f"   - Type: {type(packet)}")
+            logger.info(f"   - Attributes: {[attr for attr in dir(packet) if not attr.startswith('_')]}")
+            
             # Extract data and participant from the DataPacket object
             data = packet.data  # bytes containing the JSON payload
             participant = packet.participant  # RemoteParticipant who sent it
+            
+            logger.info(f"   - Data length: {len(data)} bytes")
+            logger.info(f"   - Participant: {participant.identity if participant else 'None'}")
+            if hasattr(packet, 'kind'):
+                logger.info(f"   - Kind: {packet.kind}")
+            if hasattr(packet, 'topic'):
+                logger.info(f"   - Topic: {packet.topic}")
+            
             try:
                 message = json.loads(data.decode('utf-8'))
                 
@@ -1000,7 +1051,7 @@ DATE HANDLING:
                             logger.info("🧪 Text injected into pipeline, waiting for completion...")
                             
                             # Wait for agent to complete response
-                            await speech_handle.wait_for_completion()
+                            await speech_handle.wait_for_playout()
                             
                             logger.info("🧪 Agent response completed")
                             
