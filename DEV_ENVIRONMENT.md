@@ -22,7 +22,7 @@ This starts:
 
 ### Access Points
 
-- **Test UI**: http://localhost:8080/polyglot-flight-agent/test-flight-ui.html
+- **Test UI (Dev)**: http://localhost:8080/polyglot-flight-agent/test-flight-ui-dev.html
 - **Chat UI**: http://localhost:8080/web-app/livekit-voice-chat.html
 - **API Docs**: http://localhost:8000/docs
 
@@ -85,7 +85,7 @@ docker-compose.dev.yml
    ```
    Should show: "🟢 ENVIRONMENT: DEVELOPMENT"
 
-3. Open test UI: http://localhost:8080/polyglot-flight-agent/test-flight-ui.html
+3. Open test UI: http://localhost:8080/polyglot-flight-agent/test-flight-ui-dev.html
 
 4. Connect and observe:
    - Text should appear ~500ms before audio
