@@ -357,7 +357,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         identity: `test-user-${Date.now()}`,
-                        room: 'flight-demo-en',
+                        room: isProduction ? 'flight-demo-en' : 'flight-demo',
                         metadata: JSON.stringify({ language: 'en' }),
                         roomMetadata: JSON.stringify({
                             require_agent: true,
