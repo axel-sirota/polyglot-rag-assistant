@@ -79,11 +79,15 @@ class SynchronizedSpeechController:
         self.message_sequence = 0  # Track message sequence for ordering
         self.min_text_render_delay = 0.2  # Minimum 200ms for text to render
         self.interruptions_enabled = True  # Default to allowing interruptions
+        self.last_synchronized_text = None  # Track last text sent via synchronized_say
         
     async def synchronized_say(self, text: str, allow_interruptions: bool = True) -> Any:
         """Send text first, then play audio with proper synchronization"""
         self.message_sequence += 1
         speech_id = f"speech_{self.message_sequence}_{time.time()}"
+        
+        # Track this text so we know it was sent via synchronized_say
+        self.last_synchronized_text = text
         
         # Send text to data channel immediately with sequence number
         try:
@@ -858,10 +862,19 @@ DATE HANDLING:
                     logger.debug(f"Original: {event.item.text_content}")
                     logger.debug(f"Cleaned: {clean_text}")
                 
-                # NOTE: We're NOT sending to data channel here anymore!
-                # The text has already been sent via pre_speech_text in synchronized_say()
-                # This prevents duplicate messages and ensures text appears before audio
-                logger.info(f"📝 Note: Text already sent via pre_speech_text, not sending duplicate")
+                # Always send the transcription for now to ensure chat displays
+                # The UI will handle deduplication if needed
+                try:
+                    data = json.dumps({
+                        "type": "transcription", 
+                        "speaker": "assistant",
+                        "text": clean_text,  # Use cleaned text
+                        "is_final": True  # Mark this as the final/complete message
+                    }).encode('utf-8')
+                    asyncio.create_task(ctx.room.local_participant.publish_data(data, reliable=True))
+                    logger.info(f"✅ Sent agent transcription to data channel")
+                except Exception as e:
+                    logger.error(f"Error sending agent transcription: {e}")
         
         
         # Add handler for speech creation (audio initialization)
