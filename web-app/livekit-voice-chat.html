@@ -802,6 +802,9 @@
                 <button id="speakerBtn" class="control-btn" title="Toggle Speaker">
                     <span id="speakerIcon">🔊</span>
                 </button>
+                <button id="interruptBtn" class="control-btn" title="Toggle Interruptions" style="display: none;">
+                    <span id="interruptIcon">🤚</span>
+                </button>
             </div>
         </div>
 
@@ -1199,6 +1202,7 @@
         let chatUI;
         let expectedMessageSequence = 1;
         let messageBuffer = new Map();
+        let interruptionsEnabled = true;  // Default to enabled
 
         async function initializeLiveKit() {
             chatUI = new ChatUIManager();
@@ -1238,6 +1242,7 @@
             const connectBtn = document.getElementById('connectBtn');
             const micBtn = document.getElementById('micBtn');
             const speakerBtn = document.getElementById('speakerBtn');
+            const interruptBtn = document.getElementById('interruptBtn');
             
             // Mobile controls
             const mobileConnectBtn = document.getElementById('mobileConnectBtn');
@@ -1278,6 +1283,33 @@
                 document.getElementById('mobileSpeakerIcon').textContent = enabled ? '🔊' : '🔈';
             };
 
+            // Interrupt toggle function
+            const interruptToggleFunction = () => {
+                interruptionsEnabled = !interruptionsEnabled;
+                const icon = document.getElementById('interruptIcon');
+                if (interruptionsEnabled) {
+                    icon.textContent = '🤚';
+                    interruptBtn.style.background = '';
+                    chatUI.addMessage('Interruptions enabled - I can be interrupted while speaking', 'system');
+                } else {
+                    icon.textContent = '🚫';
+                    interruptBtn.style.background = '#dc3545';
+                    chatUI.addMessage('Interruptions disabled - I will finish speaking before listening', 'system');
+                }
+                
+                // Send configuration to agent
+                if (room && room.localParticipant) {
+                    const data = JSON.stringify({
+                        type: 'config_update',
+                        interruptions_enabled: interruptionsEnabled
+                    });
+                    room.localParticipant.publishData(
+                        new TextEncoder().encode(data),
+                        { reliable: true }
+                    );
+                }
+            };
+
             // Attach event listeners
             connectBtn.onclick = connectFunction;
             mobileConnectBtn.onclick = connectFunction;
@@ -1287,6 +1319,8 @@
             
             speakerBtn.onclick = speakerToggleFunction;
             mobileSpeakerBtn.onclick = speakerToggleFunction;
+            
+            interruptBtn.onclick = interruptToggleFunction;
         }
 
         async function connect() {
@@ -1367,11 +1401,15 @@
 
         function handleConnected() {
             chatUI.updateConnectionStatus(true);
+            // Show interrupt button when connected
+            document.getElementById('interruptBtn').style.display = 'inline-block';
         }
 
         function handleDisconnected() {
             chatUI.updateConnectionStatus(false);
             chatUI.addMessage('Disconnected from assistant', 'system');
+            // Hide interrupt button when disconnected
+            document.getElementById('interruptBtn').style.display = 'none';
         }
 
         async function handleDataReceived(payload, participant, kind) {

@@ -78,6 +78,7 @@ class SynchronizedSpeechController:
         self.default_delay = 0.5  # Default delay before audio if no confirmation
         self.message_sequence = 0  # Track message sequence for ordering
         self.min_text_render_delay = 0.2  # Minimum 200ms for text to render
+        self.interruptions_enabled = True  # Default to allowing interruptions
         
     async def synchronized_say(self, text: str, allow_interruptions: bool = True) -> Any:
         """Send text first, then play audio with proper synchronization"""
@@ -119,7 +120,10 @@ class SynchronizedSpeechController:
         
         # Now generate and play TTS - text has definitely been displayed
         logger.info(f"🎵 Starting TTS playback for speech {speech_id} after total delay")
-        handle = self.session.say(text, allow_interruptions=allow_interruptions)
+        # Override allow_interruptions based on user preference
+        actual_allow_interruptions = allow_interruptions and self.interruptions_enabled
+        logger.info(f"🤚 Interruptions: requested={allow_interruptions}, enabled={self.interruptions_enabled}, actual={actual_allow_interruptions}")
+        handle = self.session.say(text, allow_interruptions=actual_allow_interruptions)
         return handle
     
     async def _wait_for_confirmation(self, speech_id: str):
@@ -1170,8 +1174,15 @@ DATE HANDLING:
             try:
                 message = json.loads(data.decode('utf-8'))
                 
+                # Handle config updates
+                if message.get('type') == 'config_update':
+                    if 'interruptions_enabled' in message:
+                        if hasattr(ctx.room, 'speech_controller'):
+                            ctx.room.speech_controller.interruptions_enabled = message['interruptions_enabled']
+                            logger.info(f"🤚 Interruptions {'enabled' if message['interruptions_enabled'] else 'disabled'} by user")
+                
                 # Check if this is test input (not regular transcriptions)
-                if message.get('type') == 'test_user_input' and message.get('text'):
+                elif message.get('type') == 'test_user_input' and message.get('text'):
                     text = message['text']
                     participant_id = participant.identity if participant else "unknown"
                     logger.info(f"🧪 TEST INPUT received from {participant_id}: {text}")
