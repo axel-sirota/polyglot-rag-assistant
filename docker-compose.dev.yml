@@ -56,7 +56,7 @@ services:
 
   # Web UI Server
   web-ui:
-    image: python:3.10-slim
+    image: node:18-slim
     container_name: polyglot-web-ui-dev
     working_dir: /app
     volumes:
@@ -66,18 +66,14 @@ services:
       - "8080:8080"
     environment:
       - LIVEKIT_URL=${LIVEKIT_URL}
+      - ENVIRONMENT=dev
     command: >
       bash -c "
-        echo '🌐 Starting Web UI server on port 8080...' &&
-        echo '📋 Using LiveKit Dev URL: $$LIVEKIT_URL' &&
+        echo '🌐 Starting Web UI dev server on port 8080...' &&
+        echo '📋 Environment: dev' &&
         echo '🔗 API Server: http://localhost:8000' &&
-        echo '' &&
-        echo 'Available UIs:' &&
-        echo '  - Test UI: http://localhost:8080/polyglot-flight-agent/test-flight-ui.html' &&
-        echo '  - Chat UI: http://localhost:8080/web-app/livekit-voice-chat.html' &&
-        echo '' &&
-        cd /app &&
-        python3 -m http.server 8080
+        cd /app/web-app &&
+        node dev-server.js
       "
     networks:
       - polyglot-dev

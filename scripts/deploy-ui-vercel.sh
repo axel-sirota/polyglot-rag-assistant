@@ -42,13 +42,10 @@ cp web-app/styles.css $DEPLOY_DIR/ 2>/dev/null || true
 mkdir -p $DEPLOY_DIR/api
 cp -r web-app/api/* $DEPLOY_DIR/api/ 2>/dev/null || true
 
-# Update URLs in the files
-# The HTML files have the full URL that needs to be replaced
-sed -i.bak "s|wss://polyglot-rag-assistant-3l6xagej.livekit.cloud|${LIVEKIT_URL}|g" $DEPLOY_DIR/*.html
-sed -i.bak "s|http://localhost:8000|${API_URL}|g" $DEPLOY_DIR/*.js 2>/dev/null || true
+# Ensure config.js is included
+cp web-app/api/config.js $DEPLOY_DIR/api/ 2>/dev/null || true
 
-# Clean up backup files
-find $DEPLOY_DIR -name "*.bak" -delete
+# No need to update URLs in files anymore - they use the config API
 
 # Create vercel.json for configuration
 cat > $DEPLOY_DIR/vercel.json <<EOF
@@ -78,14 +75,14 @@ EOF
 echo "🚀 Deploying to Vercel..."
 cd $DEPLOY_DIR
 
-# Deploy to Vercel with explicit project name
+# Deploy to Vercel with explicit project name and environment variables
 if [ -f ".vercel/project.json" ]; then
   # Production deployment if project exists
-  vercel --prod --token=$VERCEL_TOKEN --yes
+  vercel --prod --token=$VERCEL_TOKEN --yes -e ENVIRONMENT=production
 else
   # First time deployment with explicit project name
-  vercel --name=$PROJECT_NAME --token=$VERCEL_TOKEN --yes
-  vercel --prod --token=$VERCEL_TOKEN --yes
+  vercel --name=$PROJECT_NAME --token=$VERCEL_TOKEN --yes -e ENVIRONMENT=production
+  vercel --prod --token=$VERCEL_TOKEN --yes -e ENVIRONMENT=production
 fi
 
 # Get the deployment URL from the output

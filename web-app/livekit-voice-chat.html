@@ -1197,14 +1197,52 @@
         }
 
         // LiveKit Integration
-        const LIVEKIT_URL = 'wss://polyglot-rag-assistant-3l6xagej.livekit.cloud';
+        let LIVEKIT_URL = 'wss://polyglot-rag-assistant-3l6xagej.livekit.cloud'; // Default to production
+        let API_BASE_URL = '/api'; // Default to production
+        let ENVIRONMENT = 'production'; // Default
+        
         let room;
         let chatUI;
         let expectedMessageSequence = 1;
         let messageBuffer = new Map();
         let interruptionsEnabled = true;  // Default to enabled
+        
+        // Load configuration from API
+        async function loadConfiguration() {
+            try {
+                const response = await fetch('/api/config');
+                if (response.ok) {
+                    const config = await response.json();
+                    LIVEKIT_URL = config.livekitUrl;
+                    API_BASE_URL = config.apiUrl;
+                    ENVIRONMENT = config.environment;
+                    console.log('✅ Loaded configuration:', config);
+                } else {
+                    console.log('⚠️ Could not load config from API, using defaults');
+                }
+            } catch (error) {
+                console.log('⚠️ Config API not available, using defaults:', error.message);
+                // Fallback to detection based on hostname
+                const isLocalDev = window.location.hostname === 'localhost' || 
+                                  window.location.hostname === '127.0.0.1' ||
+                                  window.location.hostname.includes('192.168');
+                
+                if (isLocalDev) {
+                    LIVEKIT_URL = 'wss://polyglot-rag-dev-qieglig5.livekit.cloud';
+                    API_BASE_URL = 'http://localhost:8000';
+                    ENVIRONMENT = 'dev';
+                }
+            }
+            
+            console.log(`📋 Environment: ${ENVIRONMENT}`);
+            console.log(`🔗 LiveKit URL: ${LIVEKIT_URL}`);
+            console.log(`🌐 API Base URL: ${API_BASE_URL}`);
+        }
 
         async function initializeLiveKit() {
+            // Load configuration first
+            await loadConfiguration();
+            
             chatUI = new ChatUIManager();
 
             // Initialize room
@@ -1339,20 +1377,15 @@
                 // Get selected language
                 const selectedLanguage = document.getElementById('languageSelect').value;
                 
-                // Determine API URL based on environment
-                const isLocalDev = window.location.hostname === 'localhost' || 
-                                  window.location.hostname === '127.0.0.1' ||
-                                  window.location.hostname.includes('192.168');
-                
                 // Create room name - no language suffix in dev to match agent
-                const roomName = isLocalDev ? 'flight-demo' : `flight-demo-${selectedLanguage}`;
+                const roomName = ENVIRONMENT === 'dev' ? 'flight-demo' : `flight-demo-${selectedLanguage}`;
                 console.log('Connecting to room:', roomName);
                 
-                const tokenUrl = isLocalDev 
-                    ? 'http://localhost:8000/api/livekit/token'
+                const tokenUrl = ENVIRONMENT === 'dev' 
+                    ? `${API_BASE_URL}/api/livekit/token`
                     : '/api/livekit-token';
                 
-                console.log(`Using ${isLocalDev ? 'local dev' : 'production'} token endpoint:`, tokenUrl);
+                console.log(`Using ${ENVIRONMENT} token endpoint:`, tokenUrl);
                 
                 // Get a token from our backend
                 const response = await fetch(tokenUrl, {
@@ -1373,10 +1406,15 @@
                     throw new Error('Failed to get token');
                 }
                 
-                const { token } = await response.json();
+                const responseData = await response.json();
+                const { token, url } = responseData;
+                
+                // Use the URL from the response if provided, otherwise use the default
+                const livekitUrl = url || LIVEKIT_URL;
+                console.log('Connecting to LiveKit URL:', livekitUrl);
                 
                 // Connect to room
-                await room.connect(LIVEKIT_URL, token);
+                await room.connect(livekitUrl, token);
                 
                 chatUI.addMessage(`Connected to ${selectedLanguage} room! Waiting for AI assistant...`, 'system');
                 
