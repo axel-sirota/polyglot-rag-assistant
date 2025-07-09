@@ -838,6 +838,17 @@ DATE HANDLING:
                     }).encode('utf-8')
                     asyncio.create_task(ctx.room.local_participant.publish_data(data, reliable=True))
                     logger.info(f"✅ Sent user transcription to data channel")
+                    
+                    # OPTION 3: Send immediate "thinking" message for early text display
+                    thinking_data = json.dumps({
+                        "type": "pre_speech_text",
+                        "speaker": "assistant",
+                        "text": "Let me help you with that...",
+                        "speech_id": f"thinking_{time.time()}",
+                        "sequence": 0  # Temporary sequence
+                    }).encode('utf-8')
+                    asyncio.create_task(ctx.room.local_participant.publish_data(thinking_data, reliable=True))
+                    logger.info(f"💭 Sent thinking indicator to UI")
                 except Exception as e:
                     logger.error(f"Error sending user transcription: {e}")
         
@@ -862,19 +873,38 @@ DATE HANDLING:
                     logger.debug(f"Original: {event.item.text_content}")
                     logger.debug(f"Cleaned: {clean_text}")
                 
-                # Always send the transcription for now to ensure chat displays
-                # The UI will handle deduplication if needed
+                # OPTION 3: Send as pre_speech_text for immediate display
+                # This ensures text appears before TTS starts generating audio
                 try:
+                    # Increment speech controller sequence if available
+                    sequence = 1
+                    if hasattr(speech_controller, 'message_sequence'):
+                        speech_controller.message_sequence += 1
+                        sequence = speech_controller.message_sequence
+                    
+                    # Send as pre_speech_text for early display
                     data = json.dumps({
-                        "type": "transcription", 
+                        "type": "pre_speech_text",
                         "speaker": "assistant",
-                        "text": clean_text,  # Use cleaned text
-                        "is_final": True  # Mark this as the final/complete message
+                        "text": clean_text,
+                        "speech_id": f"response_{time.time()}",
+                        "sequence": sequence,
+                        "is_final": True  # This is the actual response
                     }).encode('utf-8')
                     asyncio.create_task(ctx.room.local_participant.publish_data(data, reliable=True))
-                    logger.info(f"✅ Sent agent transcription to data channel")
+                    logger.info(f"✅ Sent agent response as pre_speech_text for early display")
+                    
+                    # Also send as regular transcription for compatibility
+                    trans_data = json.dumps({
+                        "type": "transcription", 
+                        "speaker": "assistant",
+                        "text": clean_text,
+                        "is_final": True
+                    }).encode('utf-8')
+                    asyncio.create_task(ctx.room.local_participant.publish_data(trans_data, reliable=True))
+                    logger.info(f"✅ Also sent as transcription for compatibility")
                 except Exception as e:
-                    logger.error(f"Error sending agent transcription: {e}")
+                    logger.error(f"Error sending agent response: {e}")
         
         
         # Add handler for speech creation (audio initialization)
