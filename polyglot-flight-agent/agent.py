@@ -858,17 +858,10 @@ DATE HANDLING:
                     logger.debug(f"Original: {event.item.text_content}")
                     logger.debug(f"Cleaned: {clean_text}")
                 
-                # Send to data channel for chat UI
-                try:
-                    data = json.dumps({
-                        "type": "transcription", 
-                        "speaker": "assistant",
-                        "text": clean_text  # Use cleaned text
-                    }).encode('utf-8')
-                    asyncio.create_task(ctx.room.local_participant.publish_data(data, reliable=True))
-                    logger.info(f"✅ Sent agent transcription to data channel")
-                except Exception as e:
-                    logger.error(f"Error sending agent transcription: {e}")
+                # NOTE: We're NOT sending to data channel here anymore!
+                # The text has already been sent via pre_speech_text in synchronized_say()
+                # This prevents duplicate messages and ensures text appears before audio
+                logger.info(f"📝 Note: Text already sent via pre_speech_text, not sending duplicate")
         
         
         # Add handler for speech creation (audio initialization)
