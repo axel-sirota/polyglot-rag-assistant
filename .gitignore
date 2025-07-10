@@ -238,6 +238,10 @@ web-app/.vercel/
 livekit-agent/.livekit
 polyglot-flight-agent/.livekit
 
+# Claude configuration
+.claude/
+**/.claude/
+
 # Terraform
 *.tfstate
 *.tfstate.*
