@@ -1854,6 +1854,8 @@
                         
                     case 'speech_starting':
                         console.log('Speech starting:', parsedData.speech_id);
+                        // Hide thinking indicator when speech starts
+                        chatUI.hideTypingIndicator();
                         break;
                 }
             } catch (error) {
@@ -1871,7 +1873,11 @@
                     console.log('Audio element created:', audioElement);
                     
                     // Set up event listeners before playing
-                    audioElement.addEventListener('play', () => console.log('Audio started playing'));
+                    audioElement.addEventListener('play', () => {
+                        console.log('Audio started playing');
+                        // Hide thinking indicator when agent starts speaking
+                        chatUI.hideTypingIndicator();
+                    });
                     audioElement.addEventListener('pause', () => console.log('Audio paused'));
                     audioElement.addEventListener('error', (e) => console.error('Audio error:', e));
                     audioElement.addEventListener('loadeddata', () => console.log('Audio data loaded'));
