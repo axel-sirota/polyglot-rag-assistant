@@ -401,6 +401,537 @@ room.on('data_received', (data) => {
 - Data channels enable real-time state sync
 - Design for platform differences from the start
 
+## Challenge 11: Session Persistence Across Reconnections
+
+### Problem
+When users disconnected and reconnected, the agent would:
+- Greet them again as if they were new
+- Lose all conversation context
+- Reset language preferences
+- Duplicate welcome messages
+
+### Solution
+Implemented global session tracking outside of AgentSession lifecycle:
+
+```python
+# Global dictionary to store session state
+PARTICIPANT_SESSIONS: Dict[str, Dict] = {}
+
+@session.on("participant_joined")
+def on_participant_joined(event):
+    participant_id = event.participant.identity
+    
+    if participant_id in PARTICIPANT_SESSIONS:
+        # Returning user - restore their session
+        session_data = PARTICIPANT_SESSIONS[participant_id]
+        await controller.synchronized_say(
+            get_welcome_back_message(session_data["language"])
+        )
+    else:
+        # New user - create session
+        PARTICIPANT_SESSIONS[participant_id] = {
+            "language": language,
+            "conversation_history": [],
+            "joined_at": time.time()
+        }
+```
+
+### Key Learnings
+- LiveKit AgentSession is ephemeral - design around it
+- Use participant identity for persistent tracking
+- Global state survives connection drops
+
+## Challenge 12: OpenAI Realtime API Incompatibility
+
+### Problem
+LiveKit 1.1.5 promised OpenAI Realtime API support but had a critical gap:
+- WebSocket audio stream received successfully
+- AudioSource and LocalAudioTrack created
+- But audio never reached track publishing pipeline
+
+### Solution
+Discovered the architectural mismatch and reverted to proven pipeline:
+
+```python
+# The broken flow in LiveKit 1.1.5:
+# OpenAI Realtime → WebSocket → LiveKit Agent → [GAP] → AudioSource → Track
+
+# Our workaround attempts:
+# 1. Manual audio bridging (too complex)
+# 2. Force STT-LLM-TTS fallback (worked!)
+# 3. Downgrade to LiveKit 1.0.23 (final solution)
+```
+
+### Key Learnings
+- New features != production ready
+- Community validation is crucial
+- Have a rollback plan
+
+## Challenge 13: Spanish Language Crash Bug
+
+### Problem
+Deepgram Nova-3 multilingual model would crash specifically on Spanish:
+- English worked perfectly
+- Spanish caused immediate STT failure
+- No clear error messages
+- Random behavior across sessions
+
+### Solution
+Language-specific model routing:
+
+```python
+# Spanish MUST use Nova-2
+if language_code.startswith("es"):
+    return {
+        "model": "nova-2",  # NOT nova-3!
+        "language": "es",
+        "punctuate": True
+    }
+```
+
+### Key Learnings
+- Test every language individually
+- Model capabilities vary by language
+- Document language-specific quirks
+
+## Challenge 14: Test Tone Annoyance
+
+### Problem
+Agent played loud 1kHz test tone on every connection:
+- Users getting startled
+- Unprofessional for demos
+- No way to disable via configuration
+
+### Solution
+Complete removal of test tone generation:
+
+```python
+# Before: generate_test_tone() was called on init
+# After: Removed entirely
+
+# If you need connection testing, use silent frames:
+silent_frame = rtc.AudioFrame(
+    data=bytes(960),  # Silent PCM data
+    sample_rate=48000,
+    num_channels=1,
+    samples_per_channel=480
+)
+```
+
+### Key Learnings
+- Question every default behavior
+- User experience > developer convenience
+- Test with real users early
+
+## Challenge 15: Docker Development Environment Complexity
+
+### Problem
+Multiple docker-compose files created confusion:
+- docker-compose.yml
+- docker-compose.dev.yml
+- docker-compose.prod.yml
+- docker-compose.override.yml
+- Conflicting configurations
+
+### Solution
+Simplified to single development file:
+
+```yaml
+# docker-compose.dev.yml only
+services:
+  api:
+    environment:
+      - ENVIRONMENT=dev
+      - LIVEKIT_URL=ws://host.docker.internal:7880
+    ports:
+      - "8000:8000"
+```
+
+### Key Learnings
+- Start simple, add complexity only when needed
+- One source of truth per environment
+- Clear naming prevents confusion
+
+## Challenge 16: Frontend State Synchronization
+
+### Problem
+Mobile and desktop views had state mismatches:
+- Microphone button states inverted
+- Environment selector out of sync
+- Interruption toggle not updating
+- Different users seeing different states
+
+### Solution
+Centralized state management with event broadcasting:
+
+```javascript
+// Single source of truth
+const appState = {
+    micEnabled: true,
+    speakerEnabled: true,
+    environment: 'medium',
+    interruptions: true
+};
+
+// Broadcast all changes
+function updateState(key, value) {
+    appState[key] = value;
+    
+    // Update all UI elements
+    document.querySelectorAll(`[data-state="${key}"]`).forEach(el => {
+        updateElement(el, value);
+    });
+    
+    // Notify agent
+    publishData({
+        type: 'state_update',
+        key: key,
+        value: value
+    });
+}
+```
+
+### Key Learnings
+- Single source of truth prevents drift
+- Data attributes enable easy binding
+- Broadcast pattern ensures consistency
+
+## Challenge 17: Audio Device Management
+
+### Problem
+Users couldn't:
+- Select specific microphones
+- See audio levels
+- Adjust input gain
+- Diagnose audio issues
+
+### Solution
+Comprehensive audio control panel:
+
+```javascript
+// Live audio level monitoring
+const audioContext = new AudioContext();
+const analyser = audioContext.createAnalyser();
+const source = audioContext.createMediaStreamSource(stream);
+source.connect(analyser);
+
+// Gain control
+const gainNode = audioContext.createGain();
+gainNode.gain.value = 2.0; // 2x amplification
+source.connect(gainNode);
+gainNode.connect(audioContext.destination);
+
+// Device enumeration
+const devices = await navigator.mediaDevices.enumerateDevices();
+const audioInputs = devices.filter(d => d.kind === 'audioinput');
+```
+
+### Key Learnings
+- Web Audio API is powerful but complex
+- Visual feedback builds user confidence
+- Always provide manual controls
+
+## Challenge 18: Production vs Development URL Routing
+
+### Problem
+Hardcoded URLs caused 401 errors:
+- Production UI connecting to dev LiveKit
+- Dev UI connecting to production API
+- Invalid API keys for wrong domains
+
+### Solution
+Dynamic configuration endpoint:
+
+```javascript
+// /api/config.js
+export default function handler(req, res) {
+    const isDev = process.env.ENVIRONMENT === 'dev';
+    
+    res.json({
+        livekitUrl: isDev 
+            ? 'ws://localhost:7880' 
+            : process.env.LIVEKIT_URL,
+        apiUrl: isDev
+            ? 'http://localhost:8000'
+            : process.env.API_URL
+    });
+}
+```
+
+### Key Learnings
+- Never hardcode environment-specific values
+- Configuration APIs provide flexibility
+- Environment variables are your friend
+
+## Challenge 19: TTS vs Chat Formatting Dichotomy
+
+### Problem
+Same content needed different formatting:
+- Chat: Markdown, bullets, line breaks
+- TTS: Natural speech, no special characters
+- Mixed formatting broke both
+
+### Solution
+Dual formatting system:
+
+```python
+def format_for_chat(flights):
+    # Visual formatting with markdown
+    return "\n".join([
+        f"- **{f['airline']}** - ${f['price']}"
+        for f in flights
+    ])
+
+def format_for_tts(flights):
+    # Natural speech formatting
+    return " ".join([
+        f"{f['airline']} for {f['price']} dollars,"
+        for f in flights
+    ])
+
+# Use both
+chat_text = format_for_chat(results)
+speech_text = format_for_tts(results)
+await send_to_chat(chat_text)
+await speak(speech_text)
+```
+
+### Key Learnings
+- Different mediums need different formatting
+- Don't compromise either experience
+- Separation of concerns improves quality
+
+## Challenge 20: WebSocket Message Reliability
+
+### Problem
+Messages arrived out of order or got lost:
+- Race conditions between channels
+- No delivery guarantees
+- Buffering issues
+- Network packet reordering
+
+### Solution
+Reliable messaging with acknowledgments:
+
+```python
+# Agent side - track sent messages
+pending_acks = {}
+
+async def send_reliable_message(data):
+    msg_id = str(uuid.uuid4())
+    data["msg_id"] = msg_id
+    data["timestamp"] = time.time()
+    
+    pending_acks[msg_id] = data
+    
+    # Send with retry logic
+    for attempt in range(3):
+        await publish_data(data, reliable=True)
+        
+        # Wait for ack
+        if await wait_for_ack(msg_id, timeout=1.0):
+            del pending_acks[msg_id]
+            return True
+            
+    logger.error(f"Message {msg_id} failed after 3 attempts")
+```
+
+### Key Learnings
+- TCP-like guarantees over UDP need work
+- Implement application-level acknowledgments
+- Always handle the failure case
+
+## Challenge 21: No-Microphone Testing
+
+### Problem
+Needed to test voice interactions without microphone:
+- Demo machines without audio input
+- Testing specific phrases
+- Debugging production issues
+
+### Solution
+Text injection via data channels:
+
+```javascript
+// Test UI with text input
+function injectText(text) {
+    const audioData = new Float32Array(16000); // Fake audio
+    
+    room.localParticipant.publishData(JSON.stringify({
+        type: 'injected_transcription',
+        text: text,
+        is_final: true,
+        language: 'en'
+    }));
+}
+
+// Agent handles both real and injected
+@session.on("data_received")
+async def handle_injection(data):
+    if data["type"] == "injected_transcription":
+        # Process as if from STT
+        await process_user_speech(data["text"])
+```
+
+### Key Learnings
+- Build testability from the start
+- Data channels enable powerful debugging
+- Separate concerns (audio vs text processing)
+
+## Challenge 22: Airline Filtering Logic
+
+### Problem
+Users searching for specific airlines got no results:
+- Only US airlines were mapped
+- "Iberia flights" returned empty
+- International carriers ignored
+
+### Solution
+Comprehensive airline mapping:
+
+```python
+AIRLINE_ALIASES = {
+    # US Airlines
+    "American": ["AA", "American Airlines", "American"],
+    "United": ["UA", "United Airlines", "United"],
+    
+    # European Airlines  
+    "Iberia": ["IB", "Iberia", "Iberia Airlines"],
+    "British Airways": ["BA", "British Airways", "British"],
+    
+    # ... 50+ more airlines
+}
+
+def normalize_airline(name):
+    name_upper = name.upper()
+    for canonical, aliases in AIRLINE_ALIASES.items():
+        if any(alias.upper() in name_upper for alias in aliases):
+            return canonical
+    return name
+```
+
+### Key Learnings
+- Think globally from the start
+- Aliases and normalization are crucial
+- Test with real-world data
+
+## Challenge 23: Thinking Indicator Timing
+
+### Problem
+"Thinking" indicator issues:
+- Appeared after response started
+- Multiple indicators stacking
+- Never disappeared
+- Confused users about state
+
+### Solution
+State-based indicator management:
+
+```python
+thinking_message_id = None
+
+@session.on("user_speech_committed")
+async def on_speech_end(text):
+    global thinking_message_id
+    
+    # Show thinking immediately
+    thinking_message_id = str(uuid.uuid4())
+    await publish_data({
+        "type": "thinking",
+        "id": thinking_message_id,
+        "text": "Let me help you with that..."
+    })
+
+@session.on("agent_response_started")  
+async def on_response_start():
+    global thinking_message_id
+    
+    # Hide thinking indicator
+    if thinking_message_id:
+        await publish_data({
+            "type": "hide_thinking",
+            "id": thinking_message_id
+        })
+        thinking_message_id = None
+```
+
+### Key Learnings
+- Track UI state explicitly
+- Clean up temporary indicators
+- Immediate feedback improves perception
+
+## Challenge 24: Audio Track Auto-Play Restrictions
+
+### Problem
+Browsers block auto-play:
+- Silent failures
+- User confusion
+- Inconsistent across browsers
+- Mobile particularly strict
+
+### Solution
+User interaction detection and fallback:
+
+```javascript
+async function playAudioTrack(track) {
+    const audio = new Audio();
+    audio.srcObject = new MediaStream([track]);
+    
+    try {
+        await audio.play();
+    } catch (e) {
+        if (e.name === 'NotAllowedError') {
+            // Show play button
+            showManualPlayButton(audio);
+            
+            // Try on next user interaction
+            document.addEventListener('click', async () => {
+                await audio.play();
+                hideManualPlayButton();
+            }, { once: true });
+        }
+    }
+}
+```
+
+### Key Learnings
+- Browser policies change frequently
+- Always handle play() promise rejection
+- Provide manual fallbacks
+
+## Challenge 25: Multi-Platform Build Complexity
+
+### Problem
+Three platforms with different requirements:
+- Web: Gradio + production HTML
+- Mobile: React Native + Expo
+- Backend: Python + Docker
+- Shared LiveKit infrastructure
+
+### Solution
+Unified build and deployment strategy:
+
+```bash
+# Single entry point for all platforms
+./deploy-prod.sh
+
+# Platform-specific builds
+make build-web    # Bundles HTML/JS
+make build-mobile # Expo build
+make build-agent  # Docker image
+
+# Shared configuration
+cat > platforms.env <<EOF
+LIVEKIT_URL=${LIVEKIT_URL}
+API_URL=${API_URL}
+EOF
+```
+
+### Key Learnings
+- Automate everything
+- Share configuration across platforms
+- Single command deploys reduce errors
+
 ## Conclusion
 
 Building a production-ready voice assistant involves solving numerous technical challenges beyond the basic happy path. The key lessons learned:
@@ -416,4 +947,4 @@ Building a production-ready voice assistant involves solving numerous technical 
 9. **Track everything** - Message IDs, sequences, and state prevent bugs
 10. **Choose stability** - For demos, stable versions beat cutting edge
 
-The complete implementation is available in the repository, demonstrating these solutions in action across web and mobile platforms.
+Each challenge taught us something valuable about building real-time voice applications. The complete implementation is available in the repository, demonstrating these solutions in action across web and mobile platforms.

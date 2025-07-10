@@ -12,17 +12,27 @@ else
   echo "⚠️ No .env file found in project root. Using default environment variables."
 fi
 
-# Configuration
-API_URL=${API_URL:-"http://polyglot-rag-prod-alb-1838390148.us-east-1.elb.amazonaws.com"}
-LIVEKIT_URL=${LIVEKIT_URL:-"wss://polyglot-rag-assistant-3l6xagej.livekit.cloud"}
-VERCEL_TOKEN=${VERCEL_TOKEN:-""}
-PROJECT_NAME="polyglot-rag-ui"
-
-# Check for Vercel token
-if [ -z "$VERCEL_TOKEN" ]; then
-  echo "❌ VERCEL_TOKEN not set. Add to .env or export it."
+# Check required environment variables
+if [ -z "$API_URL" ]; then
+  echo "❌ ERROR: API_URL not set in .env file"
+  echo "Add API_URL=your-api-url to .env"
   exit 1
 fi
+
+if [ -z "$LIVEKIT_URL" ]; then
+  echo "❌ ERROR: LIVEKIT_URL not set in .env file"
+  echo "Add LIVEKIT_URL=your-livekit-url to .env"
+  exit 1
+fi
+
+if [ -z "$VERCEL_TOKEN" ]; then
+  echo "❌ ERROR: VERCEL_TOKEN not set in .env file"
+  echo "Add VERCEL_TOKEN=your-vercel-token to .env"
+  exit 1
+fi
+
+# Configuration
+PROJECT_NAME="polyglot-rag-ui"
 
 # Install Vercel CLI if not installed
 if ! command -v vercel &> /dev/null; then
@@ -90,7 +100,7 @@ echo "✅ UI deployed successfully!"
 echo ""
 echo "To get your deployment URL:"
 echo "1. Check the output above for the production URL"
-echo "2. Or visit: https://vercel.com/axel-sirotas-projects/polyglot-rag-ui"
+echo "2. Or visit: https://vercel.com/dashboard"
 
 # Clean up
 cd ..

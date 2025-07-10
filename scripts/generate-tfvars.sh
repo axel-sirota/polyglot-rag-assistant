@@ -19,7 +19,7 @@ cat > terraform/terraform.auto.tfvars <<EOF
 # Generated on: $(date)
 
 # Docker Hub
-dockerhub_username = "axelsirota"
+dockerhub_username = "${DOCKER_USERNAME}"
 
 # API Keys from .env file
 openai_api_key        = "${OPENAI_API_KEY}"

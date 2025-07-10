@@ -3,8 +3,25 @@
 
 set -e
 
+# Load environment variables from .env file
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+else
+    echo "❌ ERROR: .env file not found in project root"
+    echo "Please create .env file with required variables"
+    exit 1
+fi
+
+# Check required environment variables
+if [ -z "$DOCKER_USERNAME" ]; then
+    echo "❌ ERROR: DOCKER_USERNAME not set in .env file"
+    echo "Add DOCKER_USERNAME=your-docker-hub-username to .env"
+    exit 1
+fi
+
 # Configuration
-DOCKER_USERNAME=${DOCKER_USERNAME:-"axelsirota"}
 IMAGE_NAME="polyglot-agent"
 TAG=${1:-"latest"}
 
