@@ -39,7 +39,13 @@ const server = http.createServer((req, res) => {
     }
 
     // Remove leading slash and resolve path
-    const filePath = path.join(__dirname, pathname.slice(1));
+    // Handle polyglot-flight-agent paths
+    let filePath;
+    if (pathname.startsWith('/polyglot-flight-agent/')) {
+        filePath = path.join(__dirname, '..', pathname.slice(1));
+    } else {
+        filePath = path.join(__dirname, pathname.slice(1));
+    }
     
     // Check if file exists
     fs.access(filePath, fs.constants.F_OK, (err) => {
@@ -77,6 +83,7 @@ server.listen(PORT, () => {
     console.log(`🔗 LiveKit URL: ${LIVEKIT_URL}`);
     console.log('');
     console.log('Available endpoints:');
-    console.log(`  - Config API: http://localhost:${PORT}/api/config`);
     console.log(`  - Chat UI: http://localhost:${PORT}/livekit-voice-chat.html`);
+    console.log(`  - Test UI: http://localhost:${PORT}/polyglot-flight-agent/test-flight-ui.html`);
+    console.log(`  - Config API: http://localhost:${PORT}/api/config`);
 });
