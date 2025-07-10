@@ -346,22 +346,49 @@ def prewarm(proc: JobProcess):
     logger.info(f"🔧 Process ID: {os.getpid()}")
     logger.info("="*50)
     
-    # Preload VAD with optimized settings
-    logger.info("📊 Loading Silero VAD...")
+    # Define VAD configurations for different environments
+    vad_configs = {
+        "quiet": {
+            "min_speech_duration": 0.05,
+            "min_silence_duration": 0.6,  # 600ms - shorter pauses ok in quiet
+            "prefix_padding_duration": 0.4,
+            "activation_threshold": 0.25,  # More sensitive in quiet
+            "sample_rate": 16000,
+            "force_cpu": True
+        },
+        "medium": {
+            "min_speech_duration": 0.05,
+            "min_silence_duration": 0.8,  # 800ms - default for natural pauses
+            "prefix_padding_duration": 0.5,
+            "activation_threshold": 0.3,   # Balanced sensitivity
+            "sample_rate": 16000,
+            "force_cpu": True
+        },
+        "noisy": {
+            "min_speech_duration": 0.05,
+            "min_silence_duration": 1.0,  # 1000ms - longer pauses in noise
+            "prefix_padding_duration": 0.6,
+            "activation_threshold": 0.4,   # Less sensitive to avoid false triggers
+            "sample_rate": 16000,
+            "force_cpu": True
+        }
+    }
+    
+    # Store VAD configs for runtime switching
+    proc.userdata["vad_configs"] = vad_configs
+    
+    # Load default VAD with medium settings
+    logger.info("📊 Loading Silero VAD with MEDIUM (default) settings...")
     logger.info("   - min_speech_duration: 0.05s")
-    logger.info("   - min_silence_duration: 0.55s")
+    logger.info("   - min_silence_duration: 0.8s (800ms for natural pauses)")
+    logger.info("   - activation_threshold: 0.3 (balanced sensitivity)")
     logger.info("   NOTE: Silero VAD only supports 8kHz and 16kHz")
     
-    proc.userdata["vad"] = silero.VAD.load(
-        min_speech_duration=0.05,
-        min_silence_duration=0.55,
-        prefix_padding_duration=0.5,
-        activation_threshold=0.5,
-        sample_rate=16000,  # Silero VAD limitation - will resample internally
-        force_cpu=True  # Prevents GPU contention
-    )
+    proc.userdata["vad"] = silero.VAD.load(**vad_configs["medium"])
+    proc.userdata["current_environment"] = "medium"
     
-    logger.info("✅ VAD loaded and cached in process userdata")
+    logger.info("✅ VAD loaded with adaptive configuration support")
+    logger.info("🌍 Environments: quiet (600ms), medium (800ms), noisy (1000ms)")
     
     logger.info("="*50)
     logger.info("✅ PREWARM COMPLETE")
@@ -1288,6 +1315,40 @@ DATE HANDLING:
                     speech_id = message['speech_id']
                     logger.info(f"✅ Frontend confirmed text display for speech {speech_id}")
                     speech_controller.confirm_text_displayed(speech_id)
+                
+                # Handle environment updates from frontend
+                elif message.get('type') == 'environment_update':
+                    new_environment = message.get('environment', 'medium')
+                    logger.info(f"🌍 ENVIRONMENT UPDATE: {new_environment}")
+                    
+                    # Get VAD configs from prewarm
+                    vad_configs = ctx.proc.userdata.get("vad_configs", {})
+                    
+                    if new_environment in vad_configs:
+                        # Reload VAD with new configuration
+                        logger.info(f"🔄 Reloading VAD with {new_environment} settings...")
+                        new_config = vad_configs[new_environment]
+                        
+                        # Log the new settings
+                        logger.info(f"   - min_silence_duration: {new_config['min_silence_duration']}s")
+                        logger.info(f"   - activation_threshold: {new_config['activation_threshold']}")
+                        
+                        # Create new VAD with updated settings
+                        new_vad = silero.VAD.load(**new_config)
+                        
+                        # Update the VAD in the agent session
+                        session._vad = new_vad
+                        
+                        # Store current environment
+                        ctx.proc.userdata["current_environment"] = new_environment
+                        
+                        logger.info(f"✅ VAD updated to {new_environment} environment settings")
+                        
+                        # Send confirmation to user
+                        confirmation_text = f"Voice detection adjusted for {new_environment} environment."
+                        await session.say(confirmation_text)
+                    else:
+                        logger.warning(f"⚠️ Unknown environment: {new_environment}")
                     
             except Exception as e:
                 logger.debug(f"Data received (not test input): {e}")

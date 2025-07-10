@@ -792,6 +792,15 @@
                 </select>
             </div>
             
+            <!-- Environment Selector -->
+            <div class="environment-selector-header" style="margin-right: 10px;">
+                <select id="environmentSelect" onchange="handleEnvironmentChange()" style="padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; font-size: 14px;">
+                    <option value="quiet">🤫 Quiet</option>
+                    <option value="medium" selected>🏠 Normal</option>
+                    <option value="noisy">🎪 Noisy</option>
+                </select>
+            </div>
+            
             <!-- Mic Level Indicator -->
             <div style="display: flex; align-items: center; margin-right: 10px;">
                 <div id="headerLevelMeter" style="width: 60px; height: 6px; background: #rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden;">
@@ -907,6 +916,11 @@
                 <option value="ar">🇸🇦 AR</option>
                 <option value="hi">🇮🇳 HI</option>
                 <option value="multi">🌐</option>
+            </select>
+            <select id="mobileEnvironmentSelect" onchange="handleMobileEnvironmentChange()" style="padding: 10px; border-radius: 20px; border: 1px solid #ddd;">
+                <option value="quiet">🤫</option>
+                <option value="medium" selected>🏠</option>
+                <option value="noisy">🎪</option>
             </select>
             <button id="mobileConnectBtn" class="mobile-connect-btn">
                 <span id="mobileConnectIcon">🔗</span>
@@ -1659,6 +1673,19 @@
                     chatUI.addMessage(`⚠️ Microphone error: ${micError.message}. Please check your microphone permissions.`, 'system');
                 }
                 
+                // Send initial environment setting
+                const environment = document.getElementById('environmentSelect').value;
+                const envData = JSON.stringify({
+                    type: 'environment_update',
+                    environment: environment,
+                    timestamp: Date.now()
+                });
+                room.localParticipant.publishData(
+                    new TextEncoder().encode(envData),
+                    { reliable: true }
+                );
+                console.log(`🌍 Sent initial environment setting: ${environment}`);
+                
             } catch (error) {
                 console.error('Connection error:', error);
                 chatUI.addMessage(`Connection failed: ${error.message}`, 'system');
@@ -1928,6 +1955,34 @@
             // Sync with desktop selector and trigger change
             document.getElementById('languageSelect').value = document.getElementById('mobileLanguageSelect').value;
             await handleLanguageChange();
+        }
+        
+        // Handle environment change
+        async function handleEnvironmentChange() {
+            const environment = document.getElementById('environmentSelect').value;
+            chatUI.addMessage(`Environment changed to: ${environment}`, 'system');
+            
+            // Send environment update to agent
+            if (room && room.localParticipant) {
+                const data = JSON.stringify({
+                    type: 'environment_update',
+                    environment: environment,
+                    timestamp: Date.now()
+                });
+                room.localParticipant.publishData(
+                    new TextEncoder().encode(data),
+                    { reliable: true }
+                );
+            }
+            
+            // Sync mobile selector
+            document.getElementById('mobileEnvironmentSelect').value = environment;
+        }
+        
+        async function handleMobileEnvironmentChange() {
+            // Sync with desktop selector and trigger change
+            document.getElementById('environmentSelect').value = document.getElementById('mobileEnvironmentSelect').value;
+            await handleEnvironmentChange();
         }
 
         // Initialize on load
