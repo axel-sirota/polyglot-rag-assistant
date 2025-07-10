@@ -796,6 +796,9 @@
                 <button id="connectBtn" class="control-btn" title="Connect to voice assistant">
                     <span id="connectIcon">🔗</span>
                 </button>
+                <button id="micTestBtn" class="control-btn" title="Test your microphone">
+                    <span id="micTestIcon">🎙️</span>
+                </button>
                 <button id="micBtn" class="control-btn" title="Mute/unmute your microphone" style="display: none;">
                     <span id="micIcon">🎤</span>
                 </button>
@@ -1388,6 +1391,49 @@
             mobileSpeakerBtn.onclick = speakerToggleFunction;
             
             interruptBtn.onclick = interruptToggleFunction;
+            
+            // Microphone test function
+            const micTestBtn = document.getElementById('micTestBtn');
+            micTestBtn.onclick = async () => {
+                try {
+                    chatUI.addMessage('🎤 Testing microphone...', 'system');
+                    
+                    // Request microphone permission
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const analyser = audioContext.createAnalyser();
+                    const microphone = audioContext.createMediaStreamSource(stream);
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    
+                    microphone.connect(analyser);
+                    
+                    // Check audio levels for 3 seconds
+                    let maxLevel = 0;
+                    const checkLevel = () => {
+                        analyser.getByteFrequencyData(dataArray);
+                        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                        maxLevel = Math.max(maxLevel, average);
+                    };
+                    
+                    const interval = setInterval(checkLevel, 100);
+                    
+                    setTimeout(() => {
+                        clearInterval(interval);
+                        stream.getTracks().forEach(track => track.stop());
+                        audioContext.close();
+                        
+                        if (maxLevel < 10) {
+                            chatUI.addMessage('⚠️ No audio detected! Please check:\n- Microphone is not muted\n- Correct microphone is selected\n- Browser has microphone permission', 'system');
+                        } else {
+                            chatUI.addMessage(`✅ Microphone working! Audio level: ${Math.round(maxLevel)}`, 'system');
+                        }
+                    }, 3000);
+                    
+                } catch (error) {
+                    console.error('Microphone test error:', error);
+                    chatUI.addMessage(`❌ Microphone test failed: ${error.message}`, 'system');
+                }
+            };
         }
 
         async function connect() {
@@ -1455,8 +1501,25 @@
                     localParticipant: room.localParticipant?.identity
                 });
                 
-                // Enable microphone
-                await room.localParticipant.setMicrophoneEnabled(true);
+                // Enable microphone with error handling
+                try {
+                    await room.localParticipant.setMicrophoneEnabled(true);
+                    console.log('✅ Microphone enabled successfully');
+                    
+                    // Check if we have audio tracks
+                    const audioTracks = Array.from(room.localParticipant.audioTracks.values());
+                    console.log(`📊 Audio tracks: ${audioTracks.length}`);
+                    audioTracks.forEach(track => {
+                        console.log('🎤 Audio track:', {
+                            sid: track.trackSid,
+                            muted: track.isMuted,
+                            source: track.source
+                        });
+                    });
+                } catch (micError) {
+                    console.error('❌ Microphone error:', micError);
+                    chatUI.addMessage(`⚠️ Microphone error: ${micError.message}. Please check your microphone permissions.`, 'system');
+                }
                 
             } catch (error) {
                 console.error('Connection error:', error);
