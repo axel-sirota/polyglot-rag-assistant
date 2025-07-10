@@ -793,16 +793,16 @@
             </div>
             
             <div class="voice-controls">
-                <button id="connectBtn" class="control-btn" title="Connect">
+                <button id="connectBtn" class="control-btn" title="Connect to voice assistant">
                     <span id="connectIcon">🔗</span>
                 </button>
-                <button id="micBtn" class="control-btn" title="Toggle Microphone">
+                <button id="micBtn" class="control-btn" title="Mute/unmute your microphone" style="display: none;">
                     <span id="micIcon">🎤</span>
                 </button>
-                <button id="speakerBtn" class="control-btn" title="Toggle Speaker">
+                <button id="speakerBtn" class="control-btn" title="Mute/unmute audio playback" style="display: none;">
                     <span id="speakerIcon">🔊</span>
                 </button>
-                <button id="interruptBtn" class="control-btn" title="Toggle Interruptions" style="display: none;">
+                <button id="interruptBtn" class="control-btn" title="Toggle interruptions - useful in noisy environments">
                     <span id="interruptIcon">🤚</span>
                 </button>
             </div>
@@ -944,6 +944,12 @@
                 
                 if (!this.chatMessages) {
                     console.error('Chat messages container not found!');
+                    return;
+                }
+                
+                // Skip empty messages
+                if (!text || text.trim() === '') {
+                    console.warn('Skipping empty message');
                     return;
                 }
                 
@@ -1161,12 +1167,12 @@
                     connectBtn.style.display = 'flex';
                     connectBtn.classList.add('active');
                     document.getElementById('connectIcon').textContent = '🔌';
-                    connectBtn.title = 'Disconnect';
+                    connectBtn.title = 'Disconnect from voice assistant';
                 } else {
                     connectBtn.style.display = 'flex';
                     connectBtn.classList.remove('active');
                     document.getElementById('connectIcon').textContent = '🔗';
-                    connectBtn.title = 'Connect';
+                    connectBtn.title = 'Connect to voice assistant';
                 }
                 document.getElementById('micBtn').style.display = connected ? 'flex' : 'none';
                 document.getElementById('speakerBtn').style.display = connected ? 'flex' : 'none';
@@ -1206,6 +1212,7 @@
         let expectedMessageSequence = 1;
         let messageBuffer = new Map();
         let interruptionsEnabled = true;  // Default to enabled
+        let audioElements = [];  // Track all audio elements for muting
         
         // Load configuration from API
         async function loadConfiguration() {
@@ -1311,14 +1318,36 @@
 
             // Speaker toggle function
             const speakerToggleFunction = () => {
-                const enabled = room.canPlaybackAudio;
-                if (!enabled) {
+                const isMuted = speakerBtn.classList.contains('active');
+                
+                if (isMuted) {
+                    // Unmute
+                    audioElements.forEach(audio => {
+                        audio.muted = false;
+                    });
+                    speakerBtn.classList.remove('active');
+                    mobileSpeakerBtn.classList.remove('active');
+                    document.getElementById('speakerIcon').textContent = '🔊';
+                    document.getElementById('mobileSpeakerIcon').textContent = '🔊';
+                    speakerBtn.title = 'Mute audio playback';
+                    mobileSpeakerBtn.title = 'Mute audio playback';
+                } else {
+                    // Mute
+                    audioElements.forEach(audio => {
+                        audio.muted = true;
+                    });
+                    speakerBtn.classList.add('active');
+                    mobileSpeakerBtn.classList.add('active');
+                    document.getElementById('speakerIcon').textContent = '🔇';
+                    document.getElementById('mobileSpeakerIcon').textContent = '🔇';
+                    speakerBtn.title = 'Unmute audio playback';
+                    mobileSpeakerBtn.title = 'Unmute audio playback';
+                }
+                
+                // Always ensure audio can be played (browser requirement)
+                if (!room.canPlaybackAudio) {
                     room.startAudio();
                 }
-                speakerBtn.classList.toggle('active', !enabled);
-                mobileSpeakerBtn.classList.toggle('active', !enabled);
-                document.getElementById('speakerIcon').textContent = enabled ? '🔊' : '🔈';
-                document.getElementById('mobileSpeakerIcon').textContent = enabled ? '🔊' : '🔈';
             };
 
             // Interrupt toggle function
@@ -1416,7 +1445,15 @@
                 // Connect to room
                 await room.connect(livekitUrl, token);
                 
-                chatUI.addMessage(`Connected to ${selectedLanguage} room! Waiting for AI assistant...`, 'system');
+                chatUI.addMessage(`Connected! Waiting for AI assistant to join...`, 'system');
+                
+                // Log room state for debugging
+                console.log('Room state after connection:', {
+                    name: room.name,
+                    sid: room.sid,
+                    participants: Array.from(room.remoteParticipants.values()).map(p => p.identity),
+                    localParticipant: room.localParticipant?.identity
+                });
                 
                 // Enable microphone
                 await room.localParticipant.setMicrophoneEnabled(true);
@@ -1439,15 +1476,13 @@
 
         function handleConnected() {
             chatUI.updateConnectionStatus(true);
-            // Show interrupt button when connected
-            document.getElementById('interruptBtn').style.display = 'inline-block';
+            // Interrupt button is always visible now
         }
 
         function handleDisconnected() {
             chatUI.updateConnectionStatus(false);
             chatUI.addMessage('Disconnected from assistant', 'system');
-            // Hide interrupt button when disconnected
-            document.getElementById('interruptBtn').style.display = 'none';
+            // Interrupt button remains visible
         }
 
         async function handleDataReceived(payload, participant, kind) {
@@ -1510,23 +1545,67 @@
         }
 
         function handleTrackSubscribed(track, publication, participant) {
-            console.log('Track subscribed:', track.kind, participant.identity);
+            console.log('Track subscribed:', track.kind, participant.identity, 'Track ID:', track.sid);
             
             if (track.kind === 'audio' && participant.identity.includes('agent')) {
-                // Attach the agent's audio track
-                const audioElement = track.attach();
-                audioElement.play().catch(e => console.error('Audio play error:', e));
-                document.body.appendChild(audioElement);
-                
-                // Hide the audio element
-                audioElement.style.display = 'none';
+                try {
+                    // Attach the agent's audio track
+                    const audioElement = track.attach();
+                    console.log('Audio element created:', audioElement);
+                    
+                    // Set up event listeners before playing
+                    audioElement.addEventListener('play', () => console.log('Audio started playing'));
+                    audioElement.addEventListener('pause', () => console.log('Audio paused'));
+                    audioElement.addEventListener('error', (e) => console.error('Audio error:', e));
+                    audioElement.addEventListener('loadeddata', () => console.log('Audio data loaded'));
+                    
+                    // Ensure audio is allowed to play
+                    audioElement.autoplay = true;
+                    audioElement.play().then(() => {
+                        console.log('Audio playback started successfully');
+                    }).catch(e => {
+                        console.error('Audio play error:', e);
+                        chatUI.addMessage('⚠️ Audio playback blocked. Click anywhere to enable audio.', 'system');
+                        
+                        // Add click handler to start audio
+                        document.addEventListener('click', () => {
+                            audioElement.play().then(() => {
+                                console.log('Audio playback started after user interaction');
+                            });
+                        }, { once: true });
+                    });
+                    
+                    document.body.appendChild(audioElement);
+                    
+                    // Hide the audio element
+                    audioElement.style.display = 'none';
+                    
+                    // Track this audio element for muting/unmuting
+                    audioElements.push(audioElement);
+                    
+                    // Apply current mute state
+                    const isMuted = document.getElementById('speakerBtn').classList.contains('active');
+                    audioElement.muted = isMuted;
+                    
+                    console.log('Agent audio track successfully attached and configured');
+                } catch (error) {
+                    console.error('Error attaching audio track:', error);
+                    chatUI.addMessage('❌ Error setting up audio. Please refresh the page.', 'system');
+                }
             }
         }
 
         function handleTrackUnsubscribed(track, publication, participant) {
             console.log('Track unsubscribed:', track.kind, participant.identity);
             if (track.kind === 'audio') {
-                track.detach();
+                const detachedElements = track.detach();
+                // Remove from our tracking array
+                detachedElements.forEach(element => {
+                    const index = audioElements.indexOf(element);
+                    if (index > -1) {
+                        audioElements.splice(index, 1);
+                    }
+                });
             }
         }
 
@@ -1579,6 +1658,11 @@
         }
         
         function processPreSpeechText(data) {
+            // Hide thinking indicator if this is a final response
+            if (data.is_final) {
+                chatUI.hideTypingIndicator();
+            }
+            
             // Display the text immediately
             console.log('Pre-speech text received:', data.text);
             chatUI.addMessage(data.text, 'assistant');
@@ -1675,9 +1759,19 @@
 
         // Handle participant events
         function handleParticipantConnected(participant) {
-            console.log('Participant connected:', participant.identity);
+            console.log('Participant connected:', participant.identity, participant);
+            console.log('Participant tracks:', participant.trackPublications);
+            
             if (participant.identity.includes('agent')) {
                 chatUI.addMessage('🤖 AI Assistant joined - You can start speaking!', 'system');
+                
+                // Check if agent already has audio tracks published
+                participant.trackPublications.forEach((publication, trackSid) => {
+                    console.log('Existing track:', trackSid, publication.kind, publication.isSubscribed);
+                    if (publication.kind === 'audio' && !publication.isSubscribed) {
+                        console.log('Attempting to subscribe to existing audio track');
+                    }
+                });
             }
         }
 
