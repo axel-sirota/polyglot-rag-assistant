@@ -1641,15 +1641,19 @@
                     console.log('✅ Microphone enabled successfully');
                     
                     // Check if we have audio tracks
-                    const audioTracks = Array.from(room.localParticipant.audioTracks.values());
-                    console.log(`📊 Audio tracks: ${audioTracks.length}`);
-                    audioTracks.forEach(track => {
-                        console.log('🎤 Audio track:', {
-                            sid: track.trackSid,
-                            muted: track.isMuted,
-                            source: track.source
+                    if (room.localParticipant.audioTracks) {
+                        const audioTracks = Array.from(room.localParticipant.audioTracks.values());
+                        console.log(`📊 Audio tracks: ${audioTracks.length}`);
+                        audioTracks.forEach(track => {
+                            console.log('🎤 Audio track:', {
+                                sid: track.trackSid,
+                                muted: track.isMuted,
+                                source: track.source
+                            });
                         });
-                    });
+                    } else {
+                        console.log('📊 Audio tracks not yet available');
+                    }
                 } catch (micError) {
                     console.error('❌ Microphone error:', micError);
                     chatUI.addMessage(`⚠️ Microphone error: ${micError.message}. Please check your microphone permissions.`, 'system');
@@ -1728,6 +1732,8 @@
                         break;
                         
                     case 'pre_speech_text':
+                        // Hide thinking indicator when we get real response
+                        chatUI.hideTypingIndicator();
                         // Handle pre-speech text with sequence ordering
                         handleSequencedMessage(parsedData);
                         break;

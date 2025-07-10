@@ -872,6 +872,11 @@ DATE HANDLING:
                     logger.debug(f"Original: {event.item.text_content}")
                     logger.debug(f"Cleaned: {clean_text}")
                 
+                # Skip empty messages
+                if not clean_text or clean_text.strip() == '':
+                    logger.warning(f"⚠️ Skipping empty assistant message")
+                    return
+                
                 # Check if this text was already sent via synchronized_say
                 if hasattr(speech_controller, 'last_synchronized_text') and speech_controller.last_synchronized_text == clean_text:
                     logger.info(f"🔄 Text already sent via synchronized_say, skipping duplicate")
@@ -881,11 +886,8 @@ DATE HANDLING:
                     # OPTION 3: Send as pre_speech_text for immediate display
                     # This ensures text appears before TTS starts generating audio
                     try:
-                        # Increment speech controller sequence if available
-                        sequence = 1
-                        if hasattr(speech_controller, 'message_sequence'):
-                            speech_controller.message_sequence += 1
-                            sequence = speech_controller.message_sequence
+                        # For regular conversation_item_added, we don't need sequence numbering
+                        # Only synchronized_say uses sequence numbers
                         
                         # Send as pre_speech_text for early display
                         data = json.dumps({
@@ -893,7 +895,6 @@ DATE HANDLING:
                             "speaker": "assistant",
                             "text": clean_text,
                             "speech_id": f"response_{time.time()}",
-                            "sequence": sequence,
                             "is_final": True  # This is the actual response
                         }).encode('utf-8')
                         asyncio.create_task(ctx.room.local_participant.publish_data(data, reliable=True))
