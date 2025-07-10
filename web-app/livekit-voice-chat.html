@@ -799,10 +799,10 @@
                 <button id="micTestBtn" class="control-btn" title="Test your microphone">
                     <span id="micTestIcon">🎙️</span>
                 </button>
-                <button id="micBtn" class="control-btn" title="Mute/unmute your microphone" style="display: none;">
+                <button id="micBtn" class="control-btn" title="Mute/unmute your microphone">
                     <span id="micIcon">🎤</span>
                 </button>
-                <button id="speakerBtn" class="control-btn" title="Mute/unmute audio playback" style="display: none;">
+                <button id="speakerBtn" class="control-btn" title="Mute/unmute audio playback">
                     <span id="speakerIcon">🔊</span>
                 </button>
                 <button id="interruptBtn" class="control-btn" title="Toggle interruptions - useful in noisy environments">
@@ -865,10 +865,10 @@
                 <span id="mobileConnectIcon">🔗</span>
                 <span id="mobileConnectText">Connect to Assistant</span>
             </button>
-            <button id="mobileMicBtn" class="control-btn" style="display: none;">
+            <button id="mobileMicBtn" class="control-btn">
                 <span id="mobileMicIcon">🎤</span>
             </button>
-            <button id="mobileSpeakerBtn" class="control-btn" style="display: none;">
+            <button id="mobileSpeakerBtn" class="control-btn">
                 <span id="mobileSpeakerIcon">🔊</span>
             </button>
         </div>
@@ -1177,8 +1177,7 @@
                     document.getElementById('connectIcon').textContent = '🔗';
                     connectBtn.title = 'Connect to voice assistant';
                 }
-                document.getElementById('micBtn').style.display = connected ? 'flex' : 'none';
-                document.getElementById('speakerBtn').style.display = connected ? 'flex' : 'none';
+                // Buttons are always visible now
                 
                 // Update mobile controls
                 const mobileConnectBtn = document.getElementById('mobileConnectBtn');
@@ -1189,16 +1188,12 @@
                     mobileConnectBtn.classList.add('connected');
                     document.getElementById('mobileConnectIcon').textContent = '🔌';
                     document.getElementById('mobileConnectText').textContent = 'Disconnect';
-                    mobileMicBtn.style.display = 'flex';
-                    mobileSpeakerBtn.style.display = 'flex';
                     if (statusEl) statusEl.textContent = 'Connected';
                     if (statusDot) statusDot.style.background = '#4CAF50';
                 } else {
                     mobileConnectBtn.classList.remove('connected');
                     document.getElementById('mobileConnectIcon').textContent = '🔗';
                     document.getElementById('mobileConnectText').textContent = 'Connect to Assistant';
-                    mobileMicBtn.style.display = 'none';
-                    mobileSpeakerBtn.style.display = 'none';
                     if (statusEl) statusEl.textContent = 'Ready to help';
                     if (statusDot) statusDot.style.background = '#ffc107';
                 }
