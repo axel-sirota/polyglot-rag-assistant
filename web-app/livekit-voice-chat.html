@@ -792,11 +792,18 @@
                 </select>
             </div>
             
+            <!-- Mic Level Indicator -->
+            <div style="display: flex; align-items: center; margin-right: 10px;">
+                <div id="headerLevelMeter" style="width: 60px; height: 6px; background: #rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden;">
+                    <div id="headerLevelBar" style="height: 100%; background: #4CAF50; width: 0%; transition: width 0.1s ease;"></div>
+                </div>
+            </div>
+            
             <div class="voice-controls">
                 <button id="connectBtn" class="control-btn" title="Connect to voice assistant">
                     <span id="connectIcon">🔗</span>
                 </button>
-                <button id="micTestBtn" class="control-btn" title="Test your microphone">
+                <button id="micTestBtn" class="control-btn" title="Audio settings and microphone test">
                     <span id="micTestIcon">🎙️</span>
                 </button>
                 <button id="micBtn" class="control-btn" title="Mute/unmute your microphone">
@@ -840,6 +847,46 @@
             <div class="voice-wave"></div>
             <div class="voice-wave"></div>
             <span style="margin-left: 8px; color: var(--primary-blue);">Listening...</span>
+        </div>
+        
+        <!-- Audio Controls Panel -->
+        <div id="audioControlsPanel" style="display: none; position: fixed; top: 80px; right: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); z-index: 1000; width: 300px;">
+            <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">Audio Settings</h3>
+            
+            <!-- Microphone Selection -->
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 14px; color: #666;">Microphone:</label>
+                <select id="microphoneSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                    <option value="">Loading devices...</option>
+                </select>
+            </div>
+            
+            <!-- Live Level Meter -->
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 14px; color: #666;">Input Level:</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div id="levelMeter" style="flex: 1; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; position: relative;">
+                        <div id="levelBar" style="position: absolute; left: 0; top: 0; height: 100%; background: linear-gradient(to right, #4CAF50, #FFC107, #FF5722); width: 0%; transition: width 0.1s ease;"></div>
+                    </div>
+                    <span id="levelText" style="font-size: 12px; color: #666; min-width: 40px;">0%</span>
+                </div>
+            </div>
+            
+            <!-- Gain Control -->
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 14px; color: #666;">
+                    Gain: <span id="gainValue">1.0x</span>
+                </label>
+                <input type="range" id="gainSlider" min="0.5" max="3" step="0.1" value="1" style="width: 100%;">
+            </div>
+            
+            <!-- Current Status -->
+            <div style="padding: 10px; background: #f8f9fa; border-radius: 6px; font-size: 13px;">
+                <div id="micStatus">Status: Not connected</div>
+                <div id="deviceName" style="margin-top: 5px; color: #666;">Device: None</div>
+            </div>
+            
+            <button onclick="document.getElementById('audioControlsPanel').style.display='none'" style="margin-top: 15px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">Close</button>
         </div>
     </div>
 
@@ -1303,14 +1350,30 @@
 
             // Mic toggle function
             const micToggleFunction = async () => {
+                if (!room || room.state !== 'connected') {
+                    chatUI.addMessage('⚠️ Please connect first before toggling microphone', 'system');
+                    return;
+                }
+                
                 if (room.localParticipant) {
-                    const enabled = room.localParticipant.isMicrophoneEnabled;
-                    await room.localParticipant.setMicrophoneEnabled(!enabled);
-                    
-                    micBtn.classList.toggle('active', !enabled);
-                    mobileMicBtn.classList.toggle('active', !enabled);
-                    document.getElementById('micIcon').textContent = enabled ? '🎤' : '🔇';
-                    document.getElementById('mobileMicIcon').textContent = enabled ? '🎤' : '🔇';
+                    try {
+                        const enabled = room.localParticipant.isMicrophoneEnabled;
+                        await room.localParticipant.setMicrophoneEnabled(!enabled);
+                        
+                        // Update button states - note the logic is inverted
+                        const newState = !enabled;
+                        micBtn.classList.toggle('active', !newState);
+                        mobileMicBtn.classList.toggle('active', !newState);
+                        document.getElementById('micIcon').textContent = newState ? '🎤' : '🔇';
+                        document.getElementById('mobileMicIcon').textContent = newState ? '🎤' : '🔇';
+                        micBtn.title = newState ? 'Mute microphone' : 'Unmute microphone';
+                        mobileMicBtn.title = newState ? 'Mute microphone' : 'Unmute microphone';
+                        
+                        console.log(`Microphone ${newState ? 'enabled' : 'disabled'}`);
+                    } catch (error) {
+                        console.error('Error toggling microphone:', error);
+                        chatUI.addMessage(`❌ Failed to toggle microphone: ${error.message}`, 'system');
+                    }
                 }
             };
 
@@ -1387,48 +1450,120 @@
             
             interruptBtn.onclick = interruptToggleFunction;
             
-            // Microphone test function
+            // Audio controls setup
+            let audioStream = null;
+            let audioContext = null;
+            let microphone = null;
+            let gainNode = null;
+            let analyser = null;
+            let levelCheckInterval = null;
+            
+            // Microphone test button - opens audio control panel
             const micTestBtn = document.getElementById('micTestBtn');
             micTestBtn.onclick = async () => {
-                try {
-                    chatUI.addMessage('🎤 Testing microphone...', 'system');
-                    
-                    // Request microphone permission
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    const analyser = audioContext.createAnalyser();
-                    const microphone = audioContext.createMediaStreamSource(stream);
-                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                    
-                    microphone.connect(analyser);
-                    
-                    // Check audio levels for 3 seconds
-                    let maxLevel = 0;
-                    const checkLevel = () => {
-                        analyser.getByteFrequencyData(dataArray);
-                        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-                        maxLevel = Math.max(maxLevel, average);
-                    };
-                    
-                    const interval = setInterval(checkLevel, 100);
-                    
-                    setTimeout(() => {
-                        clearInterval(interval);
-                        stream.getTracks().forEach(track => track.stop());
-                        audioContext.close();
-                        
-                        if (maxLevel < 10) {
-                            chatUI.addMessage('⚠️ No audio detected! Please check:\n- Microphone is not muted\n- Correct microphone is selected\n- Browser has microphone permission', 'system');
-                        } else {
-                            chatUI.addMessage(`✅ Microphone working! Audio level: ${Math.round(maxLevel)}`, 'system');
-                        }
-                    }, 3000);
-                    
-                } catch (error) {
-                    console.error('Microphone test error:', error);
-                    chatUI.addMessage(`❌ Microphone test failed: ${error.message}`, 'system');
+                const panel = document.getElementById('audioControlsPanel');
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+                
+                if (panel.style.display === 'block') {
+                    await initializeAudioControls();
                 }
             };
+            
+            // Initialize audio controls
+            async function initializeAudioControls() {
+                try {
+                    // Get available devices
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const audioInputs = devices.filter(device => device.kind === 'audioinput');
+                    
+                    const micSelect = document.getElementById('microphoneSelect');
+                    micSelect.innerHTML = '';
+                    
+                    audioInputs.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device.deviceId;
+                        option.text = device.label || `Microphone ${micSelect.length + 1}`;
+                        micSelect.appendChild(option);
+                    });
+                    
+                    // Set up audio monitoring
+                    await setupAudioMonitoring();
+                    
+                    // Microphone change handler
+                    micSelect.onchange = async () => {
+                        await setupAudioMonitoring();
+                    };
+                    
+                    // Gain slider handler
+                    const gainSlider = document.getElementById('gainSlider');
+                    gainSlider.oninput = (e) => {
+                        const gain = parseFloat(e.target.value);
+                        document.getElementById('gainValue').textContent = gain.toFixed(1) + 'x';
+                        if (gainNode) {
+                            gainNode.gain.value = gain;
+                        }
+                    };
+                    
+                } catch (error) {
+                    console.error('Audio controls error:', error);
+                    document.getElementById('micStatus').textContent = `Error: ${error.message}`;
+                }
+            }
+            
+            // Set up audio monitoring
+            async function setupAudioMonitoring() {
+                // Clean up existing monitoring
+                if (levelCheckInterval) clearInterval(levelCheckInterval);
+                if (audioStream) audioStream.getTracks().forEach(track => track.stop());
+                if (audioContext) audioContext.close();
+                
+                const deviceId = document.getElementById('microphoneSelect').value;
+                if (!deviceId) return;
+                
+                try {
+                    // Get microphone stream
+                    audioStream = await navigator.mediaDevices.getUserMedia({
+                        audio: { deviceId: deviceId }
+                    });
+                    
+                    // Set up audio processing
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    microphone = audioContext.createMediaStreamSource(audioStream);
+                    gainNode = audioContext.createGain();
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 256;
+                    
+                    // Connect nodes
+                    microphone.connect(gainNode);
+                    gainNode.connect(analyser);
+                    
+                    // Apply current gain
+                    const currentGain = parseFloat(document.getElementById('gainSlider').value);
+                    gainNode.gain.value = currentGain;
+                    
+                    // Update device name
+                    const selectedDevice = audioStream.getAudioTracks()[0].label;
+                    document.getElementById('deviceName').textContent = `Device: ${selectedDevice}`;
+                    document.getElementById('micStatus').textContent = 'Status: Monitoring';
+                    
+                    // Start level monitoring
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    levelCheckInterval = setInterval(() => {
+                        analyser.getByteFrequencyData(dataArray);
+                        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                        const percentage = Math.min(100, (average / 128) * 100);
+                        
+                        document.getElementById('levelBar').style.width = percentage + '%';
+                        document.getElementById('levelText').textContent = Math.round(percentage) + '%';
+                        // Also update header level indicator
+                        document.getElementById('headerLevelBar').style.width = percentage + '%';
+                    }, 50);
+                    
+                } catch (error) {
+                    console.error('Microphone setup error:', error);
+                    document.getElementById('micStatus').textContent = `Error: ${error.message}`;
+                }
+            }
         }
 
         async function connect() {
@@ -1498,7 +1633,11 @@
                 
                 // Enable microphone with error handling
                 try {
-                    await room.localParticipant.setMicrophoneEnabled(true);
+                    // Use selected microphone if audio panel was opened
+                    const selectedDeviceId = document.getElementById('microphoneSelect')?.value;
+                    const micOptions = selectedDeviceId ? { deviceId: selectedDeviceId } : true;
+                    
+                    await room.localParticipant.setMicrophoneEnabled(micOptions);
                     console.log('✅ Microphone enabled successfully');
                     
                     // Check if we have audio tracks
