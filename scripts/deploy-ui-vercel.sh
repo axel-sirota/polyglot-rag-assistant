@@ -35,7 +35,6 @@ echo "🔧 Updating configuration..."
 DEPLOY_DIR=$(mktemp -d)
 # Copy the web app files
 cp web-app/livekit-voice-chat.html $DEPLOY_DIR/index.html
-cp web-app/livekit-client.html $DEPLOY_DIR/
 cp web-app/styles.css $DEPLOY_DIR/ 2>/dev/null || true
 
 # Copy API routes for Vercel
