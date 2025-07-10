@@ -5,7 +5,7 @@ services:
   api:
     build: 
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.api
     container_name: polyglot-api-dev
     ports:
       - "8000:8000"
