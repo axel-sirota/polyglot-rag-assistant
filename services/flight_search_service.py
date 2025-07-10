@@ -1134,6 +1134,7 @@ class FlightSearchServer:
         
         # Common airline name variations
         airline_aliases = {
+            # US Airlines
             "american": ["american airlines", "aa"],
             "united": ["united airlines", "ua"],
             "delta": ["delta air lines", "delta airlines", "dl"],
@@ -1141,7 +1142,41 @@ class FlightSearchServer:
             "jetblue": ["jetblue airways", "b6"],
             "alaska": ["alaska airlines", "as"],
             "spirit": ["spirit airlines", "nk"],
-            "frontier": ["frontier airlines", "f9"]
+            "frontier": ["frontier airlines", "f9"],
+            # European Airlines
+            "iberia": ["iberia airlines", "ib"],
+            "british airways": ["british", "ba"],
+            "lufthansa": ["lh"],
+            "air france": ["af"],
+            "klm": ["klm royal dutch airlines", "kl"],
+            "ryanair": ["fr"],
+            "easyjet": ["easy jet", "u2"],
+            "swiss": ["swiss international", "swiss air", "lx"],
+            "tap": ["tap air portugal", "tap portugal", "tp"],
+            # Latin American Airlines
+            "avianca": ["av"],
+            "latam": ["latam airlines", "la"],
+            "aeromexico": ["aeroméxico", "am"],
+            "copa": ["copa airlines", "cm"],
+            "gol": ["gol linhas aéreas", "g3"],
+            "azul": ["azul brazilian airlines", "ad"],
+            # Middle Eastern Airlines
+            "emirates": ["ek"],
+            "qatar": ["qatar airways", "qr"],
+            "etihad": ["etihad airways", "ey"],
+            "turkish": ["turkish airlines", "tk"],
+            # Asian Airlines
+            "singapore": ["singapore airlines", "sq"],
+            "cathay": ["cathay pacific", "cx"],
+            "ana": ["all nippon airways", "nh"],
+            "jal": ["japan airlines", "jl"],
+            "korean": ["korean air", "ke"],
+            "asiana": ["oz"],
+            # Others
+            "air canada": ["ac"],
+            "qantas": ["qf"],
+            "air new zealand": ["nz"],
+            "virgin": ["virgin atlantic", "virgin australia", "vs", "va"]
         }
         
         # Get all possible names for the requested airline

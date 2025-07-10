@@ -171,7 +171,7 @@ class FlightAPIClient:
                 params["return_date"] = return_date
                 
             async with self.session.get(
-                f"{self.base_url}/api/flights",
+                f"{self.base_url}/search_flights",
                 params=params
             ) as response:
                 if response.status == 200:
