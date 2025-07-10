@@ -156,7 +156,7 @@ class FlightAPIClient:
         if self.session:
             await self.session.close()
     
-    async def search_flights(self, origin: str, destination: str, date: str, preferred_airline: str = None, cabin_class: str = "economy") -> Dict[str, Any]:
+    async def search_flights(self, origin: str, destination: str, date: str, preferred_airline: str = None, cabin_class: str = "economy", return_date: str = None) -> Dict[str, Any]:
         """Call our API server which uses Amadeus SDK"""
         try:
             params = {
@@ -167,6 +167,8 @@ class FlightAPIClient:
             }
             if preferred_airline:
                 params["preferred_airline"] = preferred_airline
+            if return_date:
+                params["return_date"] = return_date
                 
             async with self.session.get(
                 f"{self.base_url}/api/flights",
@@ -189,6 +191,7 @@ async def search_flights(
     origin: str,
     destination: str,
     departure_date: str,
+    return_date: str | None = None,
     preferred_airline: str | None = None,
     cabin_class: str | None = "economy"
 ) -> Dict[str, Any]:
@@ -198,17 +201,21 @@ async def search_flights(
         origin: City name or airport code (e.g., 'New York' or 'JFK')
         destination: City name or airport code (e.g., 'Los Angeles' or 'LAX')
         departure_date: Date in YYYY-MM-DD format
+        return_date: Optional return date in YYYY-MM-DD format for round trips
         preferred_airline: Specific airline requested by user (e.g., 'American Airlines', 'United', 'Delta')
         cabin_class: Class of service (economy, business, first)
     
     Returns:
         Flight search results with pricing and availability
     """
-    logger.info(f"Searching flights: {origin} -> {destination} on {departure_date}, airline: {preferred_airline}, class: {cabin_class}")
+    trip_type = "roundtrip" if return_date else "oneway"
+    logger.info(f"Searching {trip_type} flights: {origin} -> {destination} on {departure_date}" + 
+                (f", returning {return_date}" if return_date else "") + 
+                f", airline: {preferred_airline}, class: {cabin_class}")
     
     async with FlightAPIClient() as client:
         try:
-            results = await client.search_flights(origin, destination, departure_date, preferred_airline, cabin_class)
+            results = await client.search_flights(origin, destination, departure_date, preferred_airline, cabin_class, return_date)
             
             if "error" in results:
                 return {
@@ -358,17 +365,17 @@ def prewarm(proc: JobProcess):
         },
         "medium": {
             "min_speech_duration": 0.05,
-            "min_silence_duration": 0.8,  # 800ms - default for natural pauses
+            "min_silence_duration": 1.0,  # 1000ms - relaxed from 800ms to avoid interrupting greetings
             "prefix_padding_duration": 0.5,
-            "activation_threshold": 0.3,   # Balanced sensitivity
+            "activation_threshold": 0.35,  # Slightly less sensitive (was 0.3)
             "sample_rate": 16000,
             "force_cpu": True
         },
         "noisy": {
             "min_speech_duration": 0.05,
-            "min_silence_duration": 1.0,  # 1000ms - longer pauses in noise
+            "min_silence_duration": 1.2,  # 1200ms - relaxed from 1000ms for very noisy environments
             "prefix_padding_duration": 0.6,
-            "activation_threshold": 0.4,   # Less sensitive to avoid false triggers
+            "activation_threshold": 0.45,  # Less sensitive (was 0.4)
             "sample_rate": 16000,
             "force_cpu": True
         }
@@ -380,15 +387,15 @@ def prewarm(proc: JobProcess):
     # Load default VAD with medium settings
     logger.info("📊 Loading Silero VAD with MEDIUM (default) settings...")
     logger.info("   - min_speech_duration: 0.05s")
-    logger.info("   - min_silence_duration: 0.8s (800ms for natural pauses)")
-    logger.info("   - activation_threshold: 0.3 (balanced sensitivity)")
+    logger.info("   - min_silence_duration: 1.0s (1000ms for natural pauses)")
+    logger.info("   - activation_threshold: 0.35 (balanced sensitivity)")
     logger.info("   NOTE: Silero VAD only supports 8kHz and 16kHz")
     
     proc.userdata["vad"] = silero.VAD.load(**vad_configs["medium"])
     proc.userdata["current_environment"] = "medium"
     
     logger.info("✅ VAD loaded with adaptive configuration support")
-    logger.info("🌍 Environments: quiet (600ms), medium (800ms), noisy (1000ms)")
+    logger.info("🌍 Environments: quiet (600ms), medium (1000ms), noisy (1200ms)")
     
     logger.info("="*50)
     logger.info("✅ PREWARM COMPLETE")
@@ -1344,9 +1351,19 @@ DATE HANDLING:
                         
                         logger.info(f"✅ VAD updated to {new_environment} environment settings")
                         
-                        # Send confirmation to user
+                        # Send confirmation to chat only (no voice announcement)
                         confirmation_text = f"Voice detection adjusted for {new_environment} environment."
-                        asyncio.create_task(session.say(confirmation_text))
+                        # Don't announce via voice - just send to chat
+                        confirmation_data = json.dumps({
+                            "type": "system_message",
+                            "speaker": "system",
+                            "text": confirmation_text,
+                            "timestamp": datetime.now().isoformat()
+                        }).encode('utf-8')
+                        asyncio.create_task(ctx.room.local_participant.publish_data(
+                            confirmation_data, 
+                            reliable=True
+                        ))
                     else:
                         logger.warning(f"⚠️ Unknown environment: {new_environment}")
                     

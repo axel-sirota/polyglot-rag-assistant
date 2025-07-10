@@ -1090,6 +1090,39 @@
                 this.newMessageIndicator.classList.remove('visible');
             }
 
+            formatMessageText(text) {
+                // Escape HTML to prevent XSS
+                const escapeHtml = (str) => {
+                    const div = document.createElement('div');
+                    div.textContent = str;
+                    return div.innerHTML;
+                };
+                
+                let formatted = escapeHtml(text);
+                
+                // Add line break before "Non-stop flights" and other flight-related sections
+                formatted = formatted.replace(/Non-stop flights/g, '<br>Non-stop flights');
+                formatted = formatted.replace(/Direct flights/g, '<br>Direct flights');
+                formatted = formatted.replace(/Connecting flights/g, '<br>Connecting flights');
+                
+                // Add line break before search summaries
+                formatted = formatted.replace(/I found/g, '<br>I found');
+                formatted = formatted.replace(/Here are/g, '<br>Here are');
+                formatted = formatted.replace(/Searching for/g, '<br>Searching for');
+                
+                // Convert lines starting with hyphen to have line breaks
+                // Match hyphen at start of line or after a space
+                formatted = formatted.replace(/(\s|^)-\s/g, '$1<br>- ');
+                
+                // Clean up any double line breaks that might have been created
+                formatted = formatted.replace(/<br><br>/g, '<br>');
+                
+                // Remove line break at the very beginning if present
+                formatted = formatted.replace(/^<br>/, '');
+                
+                return formatted;
+            }
+
             addMessage(text, sender = 'assistant', data = null) {
                 console.log('Adding message:', { text, sender, data });
                 
@@ -1140,11 +1173,11 @@
 
                 // Handle flight data
                 if (data && data.type === 'flight_results' && data.flights) {
-                    chatBubble.innerHTML = text;
+                    chatBubble.innerHTML = this.formatMessageText(text);
                     const flightContainer = this.createFlightResults(data.flights);
                     chatBubble.appendChild(flightContainer);
                 } else {
-                    chatBubble.textContent = text;
+                    chatBubble.innerHTML = this.formatMessageText(text);
                 }
 
                 messageContent.appendChild(chatBubble);
