@@ -1346,7 +1346,7 @@ DATE HANDLING:
                         
                         # Send confirmation to user
                         confirmation_text = f"Voice detection adjusted for {new_environment} environment."
-                        await session.say(confirmation_text)
+                        asyncio.create_task(session.say(confirmation_text))
                     else:
                         logger.warning(f"⚠️ Unknown environment: {new_environment}")
                     

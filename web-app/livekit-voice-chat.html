@@ -63,12 +63,16 @@
             flex-shrink: 0;
             position: relative;
             z-index: 100;
+            gap: 12px;
+            flex-wrap: wrap;
         }
 
         .header-left {
             display: flex;
             align-items: center;
             gap: 12px;
+            flex: 0 0 auto;
+            min-width: 0;
         }
 
         .assistant-avatar {
@@ -82,10 +86,18 @@
             font-size: 20px;
         }
 
+        .assistant-info {
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+        
         .assistant-info h3 {
             font-size: 18px;
             font-weight: 600;
             margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .assistant-status {
@@ -129,36 +141,92 @@
             justify-content: center;
             transition: all 0.2s ease;
             font-size: 16px;
+            position: relative;
         }
 
         .control-btn:hover {
             background: rgba(255, 255, 255, 0.3);
             transform: scale(1.05);
         }
+        
+        /* Ensure native tooltips work */
+        .control-btn[title] {
+            cursor: help;
+        }
+        
+        .control-btn:hover::after {
+            content: attr(title);
+            position: absolute;
+            bottom: -35px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            pointer-events: none;
+        }
 
         .control-btn.active {
             background: rgba(255, 76, 76, 0.8);
         }
 
-        /* Language Selector in Header */
-        .language-selector-header {
-            margin: 0 12px;
+        /* Header Controls Container */
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1 1 auto;
+            justify-content: flex-end;
+            min-width: 0;
+        }
+        
+        /* Language and Environment Selectors */
+        .language-selector-header,
+        .environment-selector-header {
+            flex: 0 0 auto;
         }
 
-        .language-selector-header select {
+        .language-selector-header select,
+        .environment-selector-header select {
             background: rgba(255, 255, 255, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.3);
             color: white;
-            padding: 6px 12px;
+            padding: 6px 10px;
             border-radius: 20px;
-            font-size: 14px;
+            font-size: 13px;
             cursor: pointer;
             outline: none;
+            max-width: 120px;
         }
 
-        .language-selector-header select option {
+        .language-selector-header select option,
+        .environment-selector-header select option {
             background: var(--primary-blue);
             color: white;
+        }
+        
+        /* Level Indicator in Header */
+        .level-indicator-header {
+            flex: 0 0 auto;
+        }
+        
+        #headerLevelMeter {
+            width: 60px;
+            height: 6px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        #headerLevelBar {
+            height: 100%;
+            background: #4CAF50;
+            width: 0%;
+            transition: width 0.1s ease;
         }
 
         /* Mobile Bottom Controls */
@@ -609,7 +677,15 @@
 
             .chat-header {
                 padding: 12px 16px;
-                height: var(--mobile-header-height);
+                height: auto;
+                min-height: var(--mobile-header-height);
+            }
+            
+            .header-controls {
+                width: 100%;
+                justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 8px;
             }
 
             .assistant-info h3 {
@@ -617,6 +693,14 @@
             }
 
             .assistant-status {
+                display: none;
+            }
+            
+            .environment-selector-header {
+                display: none;
+            }
+            
+            .level-indicator-header {
                 display: none;
             }
 
@@ -741,89 +825,92 @@
                 </div>
             </div>
             
-            <!-- Language Selector (Desktop) -->
-            <div class="language-selector-header">
-                <select id="languageSelect" onchange="handleLanguageChange()">
-                    <!-- English languages -->
-                    <option value="en" selected>English</option>
-                    
-                    <!-- Major European languages -->
-                    <option value="es">Español (Spanish)</option>
-                    <option value="fr">Français (French)</option>
-                    <option value="de">Deutsch (German)</option>
-                    <option value="it">Italiano (Italian)</option>
-                    <option value="pt">Português (Portuguese)</option>
-                    <option value="nl">Nederlands (Dutch)</option>
-                    <option value="sv">Svenska (Swedish)</option>
-                    <option value="da">Dansk (Danish)</option>
-                    <option value="no">Norsk (Norwegian)</option>
-                    <option value="fi">Suomi (Finnish)</option>
-                    
-                    <!-- Eastern European languages -->
-                    <option value="pl">Polski (Polish)</option>
-                    <option value="cs">Čeština (Czech)</option>
-                    <option value="uk">Українська (Ukrainian)</option>
-                    <option value="ru">Русский (Russian)</option>
-                    <option value="hu">Magyar (Hungarian)</option>
-                    <option value="ro">Română (Romanian)</option>
-                    <option value="bg">Български (Bulgarian)</option>
-                    
-                    <!-- Asian languages -->
-                    <option value="zh">中文 (Chinese)</option>
-                    <option value="ja">日本語 (Japanese)</option>
-                    <option value="ko">한국어 (Korean)</option>
-                    <option value="hi">हिन्दी (Hindi)</option>
-                    <option value="id">Bahasa Indonesia</option>
-                    <option value="ms">Bahasa Melayu</option>
-                    <option value="th">ไทย (Thai)</option>
-                    <option value="vi">Tiếng Việt (Vietnamese)</option>
-                    
-                    <!-- Middle Eastern languages -->
-                    <option value="ar">العربية (Arabic)</option>
-                    <option value="he">עברית (Hebrew)</option>
-                    <option value="tr">Türkçe (Turkish)</option>
-                    
-                    <!-- Other languages -->
-                    <option value="el">Ελληνικά (Greek)</option>
-                    <option value="ca">Català (Catalan)</option>
-                    
-                    <!-- Multilingual option -->
-                    <option value="multi">🌐 Multilingual (Code-switching)</option>
-                </select>
-            </div>
-            
-            <!-- Environment Selector -->
-            <div class="environment-selector-header" style="margin-right: 10px;">
-                <select id="environmentSelect" onchange="handleEnvironmentChange()" style="padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; font-size: 14px;">
-                    <option value="quiet">🤫 Quiet</option>
-                    <option value="medium" selected>🏠 Normal</option>
-                    <option value="noisy">🎪 Noisy</option>
-                </select>
-            </div>
-            
-            <!-- Mic Level Indicator -->
-            <div style="display: flex; align-items: center; margin-right: 10px;">
-                <div id="headerLevelMeter" style="width: 60px; height: 6px; background: #rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden;">
-                    <div id="headerLevelBar" style="height: 100%; background: #4CAF50; width: 0%; transition: width 0.1s ease;"></div>
+            <!-- Header Controls Container -->
+            <div class="header-controls">
+                <!-- Language Selector (Desktop) -->
+                <div class="language-selector-header">
+                    <select id="languageSelect" onchange="handleLanguageChange()">
+                        <!-- English languages -->
+                        <option value="en" selected>English</option>
+                        
+                        <!-- Major European languages -->
+                        <option value="es">Español (Spanish)</option>
+                        <option value="fr">Français (French)</option>
+                        <option value="de">Deutsch (German)</option>
+                        <option value="it">Italiano (Italian)</option>
+                        <option value="pt">Português (Portuguese)</option>
+                        <option value="nl">Nederlands (Dutch)</option>
+                        <option value="sv">Svenska (Swedish)</option>
+                        <option value="da">Dansk (Danish)</option>
+                        <option value="no">Norsk (Norwegian)</option>
+                        <option value="fi">Suomi (Finnish)</option>
+                        
+                        <!-- Eastern European languages -->
+                        <option value="pl">Polski (Polish)</option>
+                        <option value="cs">Čeština (Czech)</option>
+                        <option value="uk">Українська (Ukrainian)</option>
+                        <option value="ru">Русский (Russian)</option>
+                        <option value="hu">Magyar (Hungarian)</option>
+                        <option value="ro">Română (Romanian)</option>
+                        <option value="bg">Български (Bulgarian)</option>
+                        
+                        <!-- Asian languages -->
+                        <option value="zh">中文 (Chinese)</option>
+                        <option value="ja">日本語 (Japanese)</option>
+                        <option value="ko">한국어 (Korean)</option>
+                        <option value="hi">हिन्दी (Hindi)</option>
+                        <option value="id">Bahasa Indonesia</option>
+                        <option value="ms">Bahasa Melayu</option>
+                        <option value="th">ไทย (Thai)</option>
+                        <option value="vi">Tiếng Việt (Vietnamese)</option>
+                        
+                        <!-- Middle Eastern languages -->
+                        <option value="ar">العربية (Arabic)</option>
+                        <option value="he">עברית (Hebrew)</option>
+                        <option value="tr">Türkçe (Turkish)</option>
+                        
+                        <!-- Other languages -->
+                        <option value="el">Ελληνικά (Greek)</option>
+                        <option value="ca">Català (Catalan)</option>
+                        
+                        <!-- Multilingual option -->
+                        <option value="multi">🌐 Multilingual (Code-switching)</option>
+                    </select>
                 </div>
-            </div>
-            
-            <div class="voice-controls">
-                <button id="connectBtn" class="control-btn" title="Connect to voice assistant">
-                    <span id="connectIcon">🔗</span>
-                </button>
-                <button id="micTestBtn" class="control-btn" title="Audio settings and microphone test">
-                    <span id="micTestIcon">🎙️</span>
-                </button>
-                <button id="micBtn" class="control-btn" title="Mute/unmute your microphone">
-                    <span id="micIcon">🎤</span>
-                </button>
-                <button id="speakerBtn" class="control-btn" title="Mute/unmute audio playback">
-                    <span id="speakerIcon">🔊</span>
-                </button>
-                <button id="interruptBtn" class="control-btn" title="Toggle interruptions - useful in noisy environments">
-                    <span id="interruptIcon">🤚</span>
-                </button>
+                
+                <!-- Environment Selector -->
+                <div class="environment-selector-header">
+                    <select id="environmentSelect" onchange="handleEnvironmentChange()">
+                        <option value="quiet">🤫 Quiet</option>
+                        <option value="medium" selected>🏠 Normal</option>
+                        <option value="noisy">🎪 Noisy</option>
+                    </select>
+                </div>
+                
+                <!-- Mic Level Indicator -->
+                <div class="level-indicator-header">
+                    <div id="headerLevelMeter">
+                        <div id="headerLevelBar"></div>
+                    </div>
+                </div>
+                
+                <div class="voice-controls">
+                    <button id="connectBtn" class="control-btn" title="Connect to voice assistant">
+                        <span id="connectIcon">🔗</span>
+                    </button>
+                    <button id="micTestBtn" class="control-btn" title="Audio settings and microphone test">
+                        <span id="micTestIcon">🎙️</span>
+                    </button>
+                    <button id="micBtn" class="control-btn" title="Mute/unmute your microphone">
+                        <span id="micIcon">🎤</span>
+                    </button>
+                    <button id="speakerBtn" class="control-btn" title="Mute/unmute audio playback">
+                        <span id="speakerIcon">🔊</span>
+                    </button>
+                    <button id="interruptBtn" class="control-btn" title="Toggle interruptions - useful in noisy environments">
+                        <span id="interruptIcon">🤚</span>
+                    </button>
+                </div>
             </div>
         </div>
 
