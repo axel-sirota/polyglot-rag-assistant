@@ -159,20 +159,20 @@ class FlightAPIClient:
     async def search_flights(self, origin: str, destination: str, date: str, preferred_airline: str = None, cabin_class: str = "economy", return_date: str = None) -> Dict[str, Any]:
         """Call our API server which uses Amadeus SDK"""
         try:
-            params = {
+            json_data = {
                 "origin": origin,
                 "destination": destination,
                 "departure_date": date,
                 "cabin_class": cabin_class
             }
             if preferred_airline:
-                params["preferred_airline"] = preferred_airline
+                json_data["preferred_airline"] = preferred_airline
             if return_date:
-                params["return_date"] = return_date
+                json_data["return_date"] = return_date
                 
-            async with self.session.get(
+            async with self.session.post(
                 f"{self.base_url}/search_flights",
-                params=params
+                json=json_data
             ) as response:
                 if response.status == 200:
                     data = await response.json()
